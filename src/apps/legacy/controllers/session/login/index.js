@@ -1,4 +1,5 @@
 import createDOMPurify from 'dompurify';
+import escapeHtml from 'escape-html';
 import markdownIt from 'markdown-it';
 
 import { AppFeature } from 'constants/appFeature';
@@ -11,6 +12,8 @@ import loading from 'components/loading/loading';
 import layoutManager from 'components/layoutManager';
 import libraryMenu from 'scripts/libraryMenu';
 import browser from 'scripts/browser';
+import inputManager from 'scripts/inputManager';
+import { getKeyName } from 'scripts/keyboardNavigation';
 import globalize from 'lib/globalize';
 import 'components/cardbuilder/card.scss';
 import 'elements/emby-checkbox/emby-checkbox';
@@ -32,7 +35,7 @@ const enableFocusTransform = !browser.slow && !browser.edge;
 
 function authenticateUserByName(page, apiClient, url, username, password, isPin) {
     loading.show();
-    apiClient.authenticateUserByName(username, password).then(function (result) {
+    return apiClient.authenticateUserByName(username, password).then(function (result) {
         const user = result.User;
         loading.hide();
 
@@ -123,10 +126,19 @@ function authenticateQuickConnect(apiClient, targetUrl) {
     });
 }
 
+/** On TV the PIN pad takes the focus, focusing the field would bring up the on-screen keyboard (Finly). */
+function focusPin(context) {
+    if (layoutManager.tv) {
+        context.querySelector('.pinKey')?.focus();
+    } else {
+        context.querySelector('#txtPin').focus();
+    }
+}
+
 function onPinFailed(page, response) {
     const pinInput = page.querySelector('#txtPin');
     pinInput.value = '';
-    pinInput.focus();
+    focusPin(page);
 
     if (response.status === 401) {
         toast(globalize.translate('MessageWrongPin'));
@@ -154,7 +166,10 @@ function showPinForm(context, username, hasPassword) {
     const pinInput = context.querySelector('#txtPin');
     pinInput.value = '';
     pinInput.setAttribute('data-username', username);
-    pinInput.focus();
+    // The pad is the way in on TV, keep the field from opening the on-screen keyboard
+    pinInput.readOnly = layoutManager.tv;
+    pinInput.tabIndex = layoutManager.tv ? -1 : 0;
+    focusPin(context);
 }
 
 function onLoginSuccessful(id, accessToken, apiClient, url) {
@@ -202,7 +217,7 @@ function loadUserList(context, apiClient, users) {
         html += '<div class="' + cardBoxCssClass + '">';
         html += '<div class="cardScalable">';
         html += '<div class="cardPadder cardPadder-square"></div>';
-        html += `<div class="cardContent" data-haspw="${user.HasPassword}" data-haspin="${user.HasPin === true}" data-hasconfiguredpw="${user.HasConfiguredPassword}" data-username="${user.Name}" data-userid="${user.Id}">`;
+        html += `<div class="cardContent" data-haspw="${user.HasPassword}" data-haspin="${user.HasPin === true}" data-hasconfiguredpw="${user.HasConfiguredPassword}" data-username="${escapeHtml(user.Name)}" data-userid="${escapeHtml(user.Id)}">`;
         let imgUrl;
 
         if (user.PrimaryImageTag) {
@@ -222,7 +237,7 @@ function loadUserList(context, apiClient, users) {
         html += '</div>';
         html += '</div>';
         html += '<div class="cardFooter visualCardBox-cardFooter">';
-        html += '<div class="cardText singleCardText cardTextCentered">' + user.Name + '</div>';
+        html += '<div class="cardText singleCardText cardTextCentered">' + escapeHtml(user.Name) + '</div>';
         html += '</div>';
         html += '</div>';
         html += '</button>';
@@ -296,11 +311,41 @@ export default function (view, params) {
         e.preventDefault();
         return false;
     });
+    const pinForm = view.querySelector('.pinLoginForm');
     const pinInput = view.querySelector('#txtPin');
+    // Presses are ignored while a PIN is being checked, so a fifth digit can't start a second sign in (Finly)
+    let pinInFlight = false;
+    const setPinInFlight = function (inFlight) {
+        pinInFlight = inFlight;
+        pinForm.classList.toggle('pinLoginForm-busy', inFlight);
+        view.querySelector('.pinPad').setAttribute('aria-busy', String(inFlight));
+        pinInput.readOnly = inFlight || layoutManager.tv;
+    };
     const submitPinWhenComplete = function () {
         pinInput.value = pinInput.value.replace(/\D/g, '').slice(0, 4);
-        if (pinInput.value.length === 4) {
-            authenticateUserByName(view, getApiClient(), getTargetUrl(), pinInput.getAttribute('data-username'), pinInput.value, true);
+        if (pinInput.value.length === 4 && !pinInFlight) {
+            setPinInFlight(true);
+            authenticateUserByName(view, getApiClient(), getTargetUrl(), pinInput.getAttribute('data-username'), pinInput.value, true)
+                .finally(function () {
+                    setPinInFlight(false);
+                });
+        }
+    };
+    const pressPinKey = function (digit) {
+        if (pinInFlight) {
+            return;
+        }
+
+        if (digit == null) {
+            pinInput.value = pinInput.value.slice(0, -1);
+        } else {
+            pinInput.value += digit;
+            submitPinWhenComplete();
+        }
+    };
+    const closePinForm = function () {
+        if (!pinInFlight) {
+            showVisualForm();
         }
     };
     pinInput.addEventListener('input', submitPinWhenComplete);
@@ -310,14 +355,44 @@ export default function (view, params) {
             return;
         }
 
-        if (key.classList.contains('pinDelete')) {
-            pinInput.value = pinInput.value.slice(0, -1);
-        } else {
-            pinInput.value += key.getAttribute('data-digit');
-            submitPinWhenComplete();
+        pressPinKey(key.classList.contains('pinDelete') ? null : key.getAttribute('data-digit'));
+    });
+    // A keyboard or remote can type the PIN wherever the focus is on the pad, and Back closes the pad rather than
+    // leaving the page
+    pinForm.addEventListener('keydown', function (e) {
+        if (e.ctrlKey || e.altKey || e.metaKey) {
+            return;
+        }
+
+        const key = getKeyName(e);
+        if (key === 'Back' || key === 'Escape' || e.key === 'GoBack' || e.key === 'BrowserBack') {
+            e.preventDefault();
+            e.stopPropagation();
+            closePinForm();
+            return;
+        }
+
+        // The field handles typing itself when it has the focus
+        if (e.target === pinInput && !pinInput.readOnly) {
+            return;
+        }
+
+        if (/^\d$/.test(e.key)) {
+            e.preventDefault();
+            pressPinKey(e.key);
+        } else if (e.key === 'Backspace') {
+            e.preventDefault();
+            pressPinKey(null);
         }
     });
-    view.querySelector('.pinLoginForm').addEventListener('submit', function (e) {
+    // Back from elsewhere, such as an app's own back button
+    const onCommand = function (e) {
+        if (e.detail.command === 'back' && !pinForm.classList.contains('hide')) {
+            e.preventDefault();
+            closePinForm();
+        }
+    };
+    pinForm.addEventListener('submit', function (e) {
         e.preventDefault();
         return false;
     });
@@ -326,7 +401,7 @@ export default function (view, params) {
         view.querySelector('#txtManualPassword').value = '';
         showManualForm(view, true, true);
     });
-    view.querySelector('.btnPinCancel').addEventListener('click', showVisualForm);
+    view.querySelector('.btnPinCancel').addEventListener('click', closePinForm);
     view.querySelector('.btnForgotPassword').addEventListener('click', function () {
         Dashboard.navigate('forgotpassword');
     });
@@ -346,6 +421,7 @@ export default function (view, params) {
     view.addEventListener('viewshow', function () {
         loading.show();
         libraryMenu.setTransparentMenu(true);
+        inputManager.on(view, onCommand);
 
         if (!appHost.supports(AppFeature.MultiServer)) {
             view.querySelector('.btnSelectServer').classList.add('hide');
@@ -398,6 +474,7 @@ export default function (view, params) {
     });
     view.addEventListener('viewhide', function () {
         libraryMenu.setTransparentMenu(false);
+        inputManager.off(view, onCommand);
     });
 }
 
