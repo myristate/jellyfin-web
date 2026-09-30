@@ -25,6 +25,7 @@ import {
     sameId
 } from '../apps/dashboard/features/users/api/profileLevels';
 import { invalidate as invalidateKidsView } from './kidsView/kidsView';
+import { canReport, showReportProblem } from './reportProblem/reportProblem';
 import * as userSettings from '../scripts/settings/userSettings';
 
 /** Item types that support downloading all children. */
@@ -264,6 +265,15 @@ export async function getCommands(options) {
         } catch (err) {
             console.warn('[itemContextMenu] unable to load profile levels', err);
         }
+    }
+
+    // Tell an administrator something is wrong with the file
+    if (user && canReport(item) && options.reportProblem !== false) {
+        commands.push({
+            name: globalize.translate('ReportProblem'),
+            id: 'reportproblem',
+            icon: 'report_problem'
+        });
     }
 
     if (commands.length) {
@@ -508,6 +518,10 @@ function executeCommand(item, id, options) {
     const serverId = item.ServerId;
     const apiClient = ServerConnections.getApiClient(serverId);
     const api = ServerConnections.getApi(serverId);
+
+    if (id === 'reportproblem') {
+        return showReportProblem(apiClient, item).then(() => ({ command: id, updated: false, deleted: false }));
+    }
 
     if (id === 'hidefromme' || id.startsWith('hidefromlevel:') || id.startsWith('hideuser:')) {
         return new Promise(function (resolve, reject) {
