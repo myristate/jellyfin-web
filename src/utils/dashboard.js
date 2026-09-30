@@ -116,6 +116,23 @@ export function logout() {
     });
 }
 
+/**
+ * Sign out and go straight to the profile picker of the same server, rather than to server selection on apps that
+ * know several servers (Finly).
+ */
+export function switchProfile() {
+    const serverId = ServerConnections.currentApiClient()?.serverId();
+
+    ServerConnections.logout().then(function () {
+        // Clear the query cache
+        queryClient.clear();
+        // Reset cached views
+        viewContainer.reset();
+
+        navigate(serverId ? 'login?serverid=' + serverId : 'login');
+    });
+}
+
 export function getPluginUrl(name) {
     return 'configurationpage?name=' + encodeURIComponent(name);
 }
@@ -255,6 +272,7 @@ const Dashboard = {
     selectServer,
     serverAddress,
     showLoadingMsg,
+    switchProfile,
     datetime,
     DirectoryBrowser,
     dialogHelper,

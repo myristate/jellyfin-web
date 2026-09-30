@@ -349,6 +349,8 @@ function refreshLibraryInfoInDrawer(user) {
             html += `<a is="emby-linkbutton" class="navMenuOption lnkMediaFolder btnSelectServer" data-itemid="selectserver" href="#"><span class="material-icons navMenuOptionIcon storage" aria-hidden="true"></span><span class="navMenuOptionText">${globalize.translate('SelectServer')}</span></a>`;
         }
 
+        // Finly: back to this server's profile picker
+        html += `<a is="emby-linkbutton" class="navMenuOption lnkMediaFolder btnSwitchProfile" data-itemid="switchprofile" href="#"><span class="material-icons navMenuOptionIcon switch_account" aria-hidden="true"></span><span class="navMenuOptionText">${globalize.translate('SwitchProfile')}</span></a>`;
         html += `<a is="emby-linkbutton" class="navMenuOption lnkMediaFolder btnSettings" data-itemid="settings" href="#"><span class="material-icons navMenuOptionIcon settings" aria-hidden="true"></span><span class="navMenuOptionText">${globalize.translate('Settings')}</span></a>`;
         html += `<a is="emby-linkbutton" class="navMenuOption lnkMediaFolder btnLogout" data-itemid="logout" href="#"><span class="material-icons navMenuOptionIcon exit_to_app" aria-hidden="true"></span><span class="navMenuOptionText">${globalize.translate('ButtonSignOut')}</span></a>`;
 
@@ -365,6 +367,11 @@ function refreshLibraryInfoInDrawer(user) {
     const btnSelectServer = navDrawerScrollContainer.querySelector('.btnSelectServer');
     if (btnSelectServer) {
         btnSelectServer.addEventListener('click', onSelectServerClick);
+    }
+
+    const btnSwitchProfile = navDrawerScrollContainer.querySelector('.btnSwitchProfile');
+    if (btnSwitchProfile) {
+        btnSwitchProfile.addEventListener('click', onSwitchProfileClick);
     }
 
     const btnSettings = navDrawerScrollContainer.querySelector('.btnSettings');
@@ -506,6 +513,10 @@ function onSelectServerClick() {
 
 function onSettingsClick() {
     Dashboard.navigate('mypreferencesmenu');
+}
+
+function onSwitchProfileClick() {
+    Dashboard.switchProfile();
 }
 
 function onExitAppClick() {
