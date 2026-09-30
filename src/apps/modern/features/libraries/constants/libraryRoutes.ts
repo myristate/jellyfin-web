@@ -12,13 +12,14 @@ export const LibraryRoutes: LibraryRoute[] = [
             {
                 index: 0,
                 label: 'Programs',
-                view: LibraryTab.Programs,
-                isDefault: true
+                view: LibraryTab.Programs
             },
             {
                 index: 1,
                 label: 'Guide',
-                view: LibraryTab.Guide
+                view: LibraryTab.Guide,
+                // (Finly) The TV page opens on the guide
+                isDefault: true
             },
             {
                 index: 2,

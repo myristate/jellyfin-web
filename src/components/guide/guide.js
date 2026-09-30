@@ -563,14 +563,14 @@ function Guide(options) {
                 }
                 html += indicatorHtml || '';
 
-                if ((program.EpisodeTitle && programOptions.showEpisodeTitle)) {
-                    html += '<div class="guideProgramSecondaryInfo">';
-
-                    if (program.EpisodeTitle && programOptions.showEpisodeTitle) {
-                        html += '<span class="programSecondaryTitle">' + escapeHtml(program.EpisodeTitle) + '</span>';
-                    }
-                    html += '</div>';
+                // (Finly) The start and end time on a second line, so the exact times are easy to read; the episode
+                // title follows when there's room
+                html += '<div class="guideProgramSecondaryInfo">';
+                html += '<span class="guideProgramTime">' + getDisplayTime(program.StartDateLocal) + '–' + getDisplayTime(program.EndDateLocal) + '</span>';
+                if (program.EpisodeTitle && programOptions.showEpisodeTitle) {
+                    html += '<span class="programSecondaryTitle">' + escapeHtml(program.EpisodeTitle) + '</span>';
                 }
+                html += '</div>';
 
                 html += '</div>';
 

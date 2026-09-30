@@ -191,6 +191,8 @@ function setScrollClasses(elem, scrollX) {
 
 function getDefaultTabIndex(folderId) {
     switch (userSettings.get('landing-' + folderId)) {
+        case LibraryTab.Programs:
+            return 0;
         case LibraryTab.Guide:
             return 1;
         case LibraryTab.Channels:
@@ -202,7 +204,8 @@ function getDefaultTabIndex(folderId) {
         case LibraryTab.SeriesTimers:
             return 5;
         default:
-            return 0;
+            // (Finly) The TV page opens on the guide
+            return 1;
     }
 }
 

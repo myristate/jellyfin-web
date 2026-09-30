@@ -75,7 +75,8 @@
 }
 
 .channelPrograms {
-    height: 4.42em;
+    /* (Finly) Compact rows: two lines of text, so more channels fit on screen */
+    height: 3.2em;
     contain: strict;
     display: flex;
     flex-direction: column;
@@ -161,7 +162,7 @@
     border-width: 1px 1px 1px 0;
     border-style: solid;
     width: 100%;
-    height: 4.42em;
+    height: 3.2em;
     contain: strict;
     position: relative;
     background: transparent;
@@ -304,6 +305,24 @@
     display: flex;
     align-items: center;
     margin-top: 0.1em;
+    font-size: 0.86em;
+    opacity: 0.75;
+    overflow: hidden;
+}
+
+.guideProgramTime {
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+.guideProgramTime + .programSecondaryTitle::before {
+    content: "\00b7";
+    margin: 0 0.4em;
+}
+
+.programSecondaryTitle {
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .programIcon {
