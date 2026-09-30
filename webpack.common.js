@@ -16,7 +16,9 @@ const Assets = [
     '@jellyfin/libass-wasm/dist/js/subtitles-octopus-worker.js',
     '@jellyfin/libass-wasm/dist/js/subtitles-octopus-worker.wasm',
     '@jellyfin/libass-wasm/dist/js/subtitles-octopus-worker-legacy.js',
-    'pdfjs-dist/build/pdf.worker.js'
+    'pdfjs-dist/build/pdf.worker.js',
+    // hls.js can't build its worker from the bundled copy, webpack renames the module variables it uses
+    'hls.js/dist/hls.worker.js'
 ];
 
 const DEV_MODE = process.env.NODE_ENV !== 'production';
