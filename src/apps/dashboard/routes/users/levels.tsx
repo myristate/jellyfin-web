@@ -15,6 +15,7 @@ import {
     deleteProfileLevel,
     getProfileLevels,
     NO_LEVEL,
+    notifyProfileAccessChanged,
     saveProfileLevel,
     type ProfileLevel
 } from 'apps/dashboard/features/users/api/profileLevels';
@@ -80,6 +81,8 @@ const LevelEditor = ({ level, ratings, members, onSaved, onCancelNew }: LevelEdi
             BlockedTags: splitTags(blockedTags)
         }).then(() => {
             setError(undefined);
+            // Item menus and the kids view cache the levels and who can see what (Finly)
+            notifyProfileAccessChanged();
             onSaved();
         }).catch((response: Response) => {
             if (response?.status === 400 && typeof response.text === 'function') {
@@ -97,7 +100,10 @@ const LevelEditor = ({ level, ratings, members, onSaved, onCancelNew }: LevelEdi
         }
 
         confirm(globalize.translate('ProfileLevelDeleteConfirm', level.Name), globalize.translate('Delete')).then(() => {
-            deleteProfileLevel(window.ApiClient, level.Id).then(onSaved, () => setError(globalize.translate('ErrorDefault')));
+            deleteProfileLevel(window.ApiClient, level.Id).then(() => {
+                notifyProfileAccessChanged();
+                onSaved();
+            }, () => setError(globalize.translate('ErrorDefault')));
         }).catch(() => {
             // confirm dialog closed
         });

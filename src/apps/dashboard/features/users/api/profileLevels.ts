@@ -22,6 +22,38 @@ export const NO_LEVEL = '00000000000000000000000000000000';
 export const getProfileLevels = (apiClient: ApiClient): Promise<ProfileLevel[]> =>
     apiClient.getJSON(apiClient.getUrl('ProfileLevels'));
 
+/** Levels rarely change, so item menus and the kids view share one copy per server until a level is saved. */
+const levelsCache = new Map<string, Promise<ProfileLevel[]>>();
+
+export const getProfileLevelsCached = (apiClient: ApiClient): Promise<ProfileLevel[]> => {
+    const key = apiClient.serverId() || '';
+    let levels = levelsCache.get(key);
+    if (!levels) {
+        levels = getProfileLevels(apiClient);
+        levelsCache.set(key, levels);
+        // Try again next time rather than keep a failure
+        levels.catch(() => levelsCache.delete(key));
+    }
+    return levels;
+};
+
+/** Dispatched on the document when who can see what may have changed (Finly). */
+export const PROFILE_ACCESS_CHANGED = 'finlyprofileaccesschange';
+
+export interface ProfileAccessChangedDetail {
+    /** The item whose access changed, or none when a level or a profile's restrictions changed. */
+    itemId?: string;
+}
+
+/**
+ * Tell the kids view and item menus that access changed: for one item after it was added to or removed from
+ * profiles, or for everything after a level or a profile's parental controls were saved.
+ */
+export const notifyProfileAccessChanged = (itemId?: string) => {
+    if (!itemId) levelsCache.clear();
+    document.dispatchEvent(new CustomEvent<ProfileAccessChangedDetail>(PROFILE_ACCESS_CHANGED, { detail: { itemId } }));
+};
+
 export const saveProfileLevel = (apiClient: ApiClient, level: ProfileLevel): Promise<ProfileLevel> =>
     apiClient.ajax({
         type: 'POST',

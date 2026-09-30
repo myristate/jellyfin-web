@@ -6,7 +6,7 @@
 import { ServerConnections } from 'lib/jellyfin-apiclient';
 import globalize from 'lib/globalize';
 import actionsheet from 'components/actionSheet/actionSheet';
-import { getProfileLevels } from 'apps/dashboard/features/users/api/profileLevels';
+import { getProfileLevelsCached, PROFILE_ACCESS_CHANGED } from 'apps/dashboard/features/users/api/profileLevels';
 
 import './kidsView.scss';
 
@@ -158,7 +158,7 @@ export async function chooseTarget(button) {
 
 async function choose(button) {
     try {
-        levels = await getProfileLevels(apiClient());
+        levels = await getProfileLevelsCached(apiClient());
         if (!profiles.length) {
             const result = await apiClient().getJSON(apiClient().getUrl('Items/ProfileAccess', { ids: '' }));
             profiles = result.Profiles || [];
@@ -220,10 +220,21 @@ function addButtons(root) {
 }
 
 /** Forget what is known about an item, after it was added to or removed from profiles. */
-export function invalidate(itemId) {
+function invalidate(itemId) {
     access.delete(normalize(itemId));
     for (const card of document.querySelectorAll(`.card[data-id="${itemId}"]`)) queue(card);
 }
+
+document.addEventListener(PROFILE_ACCESS_CHANGED, e => {
+    const itemId = e.detail?.itemId;
+    if (itemId) {
+        invalidate(itemId);
+    } else {
+        access.clear();
+        profiles = [];
+        refreshAll();
+    }
+});
 
 /** The profiles and levels known, for item menus. */
 export function getKnownProfiles() {
