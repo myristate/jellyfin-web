@@ -28,6 +28,31 @@
             </div>
         </form>
 
+        <form class="pinLoginForm margin-auto-x hide">
+            <h1 class="sectionTitle pinTitle"></h1>
+            <input id="txtPin" class="pinInput" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" aria-label="${LabelPin}" />
+            <div class="pinPad">
+                <button is="emby-button" type="button" class="raised pinKey" data-digit="1">1</button>
+                <button is="emby-button" type="button" class="raised pinKey" data-digit="2">2</button>
+                <button is="emby-button" type="button" class="raised pinKey" data-digit="3">3</button>
+                <button is="emby-button" type="button" class="raised pinKey" data-digit="4">4</button>
+                <button is="emby-button" type="button" class="raised pinKey" data-digit="5">5</button>
+                <button is="emby-button" type="button" class="raised pinKey" data-digit="6">6</button>
+                <button is="emby-button" type="button" class="raised pinKey" data-digit="7">7</button>
+                <button is="emby-button" type="button" class="raised pinKey" data-digit="8">8</button>
+                <button is="emby-button" type="button" class="raised pinKey" data-digit="9">9</button>
+                <span></span>
+                <button is="emby-button" type="button" class="raised pinKey" data-digit="0">0</button>
+                <button is="emby-button" type="button" class="raised pinKey pinDelete" title="${Delete}"><span class="material-icons backspace" aria-hidden="true"></span></button>
+            </div>
+            <button is="emby-button" type="button" class="raised cancel block btnUsePassword hide">
+                <span>${ButtonUsePassword}</span>
+            </button>
+            <button is="emby-button" type="button" class="raised cancel block btnPinCancel">
+                <span>${ButtonCancel}</span>
+            </button>
+        </form>
+
         <div class="visualLoginForm" style="text-align: center;">
             <h1 style="margin-top:1em;">${HeaderPleaseSignIn}</h1>
             <div id="divUsers" class="itemsContainer vertical-wrap centered"></div>

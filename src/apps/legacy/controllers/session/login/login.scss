@@ -24,3 +24,35 @@
         width: fit-content;
     }
 }
+
+.pinLoginForm {
+    max-width: 20em;
+    text-align: center;
+}
+
+.pinInput {
+    display: block;
+    width: 6em;
+    margin: 0 auto 1em;
+    padding: .2em;
+    border: none;
+    border-bottom: 2px solid currentColor;
+    background: transparent;
+    color: inherit;
+    font-size: 2.4em;
+    letter-spacing: .4em;
+    text-align: center;
+}
+
+.pinPad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: .6em;
+    margin-bottom: 1.2em;
+
+    .pinKey {
+        margin: 0;
+        padding: .8em 0;
+        font-size: 1.4em;
+    }
+}

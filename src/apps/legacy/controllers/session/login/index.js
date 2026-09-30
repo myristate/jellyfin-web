@@ -30,7 +30,7 @@ domPurify.setConfig({
 
 const enableFocusTransform = !browser.slow && !browser.edge;
 
-function authenticateUserByName(page, apiClient, url, username, password) {
+function authenticateUserByName(page, apiClient, url, username, password, isPin) {
     loading.show();
     apiClient.authenticateUserByName(username, password).then(function (result) {
         const user = result.User;
@@ -40,6 +40,11 @@ function authenticateUserByName(page, apiClient, url, username, password) {
     }, function (response) {
         page.querySelector('#txtManualPassword').value = '';
         loading.hide();
+
+        if (isPin) {
+            onPinFailed(page, response);
+            return;
+        }
 
         const UnauthorizedOrForbidden = [401, 403];
         if (UnauthorizedOrForbidden.includes(response.status)) {
@@ -118,6 +123,40 @@ function authenticateQuickConnect(apiClient, targetUrl) {
     });
 }
 
+function onPinFailed(page, response) {
+    const pinInput = page.querySelector('#txtPin');
+    pinInput.value = '';
+    pinInput.focus();
+
+    if (response.status === 401) {
+        toast(globalize.translate('MessageWrongPin'));
+    } else if (response.status === 403 && typeof response.text === 'function') {
+        // For example too many wrong PINs, the server says how long to wait
+        response.text().then(function (text) {
+            toast(text ? text.replace(/^\[[^\]]*\]\s*/, '') : globalize.translate('MessageUnauthorizedUser'));
+        });
+    } else {
+        Dashboard.alert({
+            message: globalize.translate('MessageUnableToConnectToServer'),
+            title: globalize.translate('HeaderConnectionFailure')
+        });
+    }
+}
+
+function showPinForm(context, username, hasPassword) {
+    context.querySelector('.pinLoginForm').classList.remove('hide');
+    context.querySelector('.visualLoginForm').classList.add('hide');
+    context.querySelector('.manualLoginForm').classList.add('hide');
+    context.querySelector('.btnManual').classList.add('hide');
+    context.querySelector('.pinTitle').textContent = globalize.translate('EnterPinFor', username);
+    context.querySelector('.btnUsePassword').classList.toggle('hide', !hasPassword);
+
+    const pinInput = context.querySelector('#txtPin');
+    pinInput.value = '';
+    pinInput.setAttribute('data-username', username);
+    pinInput.focus();
+}
+
 function onLoginSuccessful(id, accessToken, apiClient, url) {
     Dashboard.onServerChanged(id, accessToken, apiClient);
     Dashboard.navigate(url || 'home');
@@ -127,6 +166,7 @@ function showManualForm(context, showCancel, focusPassword) {
     context.querySelector('.chkRememberLogin').checked = appSettings.enableAutoLogin();
     context.querySelector('.manualLoginForm').classList.remove('hide');
     context.querySelector('.visualLoginForm').classList.add('hide');
+    context.querySelector('.pinLoginForm').classList.add('hide');
     context.querySelector('.btnManual').classList.add('hide');
 
     if (focusPassword) {
@@ -162,7 +202,7 @@ function loadUserList(context, apiClient, users) {
         html += '<div class="' + cardBoxCssClass + '">';
         html += '<div class="cardScalable">';
         html += '<div class="cardPadder cardPadder-square"></div>';
-        html += `<div class="cardContent" data-haspw="${user.HasPassword}" data-username="${user.Name}" data-userid="${user.Id}">`;
+        html += `<div class="cardContent" data-haspw="${user.HasPassword}" data-haspin="${user.HasPin === true}" data-hasconfiguredpw="${user.HasConfiguredPassword}" data-username="${user.Name}" data-userid="${user.Id}">`;
         let imgUrl;
 
         if (user.PrimaryImageTag) {
@@ -217,6 +257,7 @@ export default function (view, params) {
     function showVisualForm() {
         view.querySelector('.visualLoginForm').classList.remove('hide');
         view.querySelector('.manualLoginForm').classList.add('hide');
+        view.querySelector('.pinLoginForm').classList.add('hide');
         view.querySelector('.btnManual').classList.remove('hide');
 
         import('components/autoFocuser').then(({ default: autoFocuser }) => {
@@ -233,10 +274,13 @@ export default function (view, params) {
             const id = cardContent.getAttribute('data-userid');
             const name = cardContent.getAttribute('data-username');
             const haspw = cardContent.getAttribute('data-haspw');
+            const haspin = cardContent.getAttribute('data-haspin');
 
             if (id === 'manual') {
                 context.querySelector('#txtManualName').value = '';
                 showManualForm(context, true);
+            } else if (haspin == 'true') {
+                showPinForm(context, name, cardContent.getAttribute('data-hasconfiguredpw') == 'true');
             } else if (haspw == 'false') {
                 authenticateUserByName(context, getApiClient(), getTargetUrl(), name, '');
             } else {
@@ -252,6 +296,37 @@ export default function (view, params) {
         e.preventDefault();
         return false;
     });
+    const pinInput = view.querySelector('#txtPin');
+    const submitPinWhenComplete = function () {
+        pinInput.value = pinInput.value.replace(/\D/g, '').slice(0, 4);
+        if (pinInput.value.length === 4) {
+            authenticateUserByName(view, getApiClient(), getTargetUrl(), pinInput.getAttribute('data-username'), pinInput.value, true);
+        }
+    };
+    pinInput.addEventListener('input', submitPinWhenComplete);
+    view.querySelector('.pinPad').addEventListener('click', function (e) {
+        const key = dom.parentWithClass(e.target, 'pinKey');
+        if (!key) {
+            return;
+        }
+
+        if (key.classList.contains('pinDelete')) {
+            pinInput.value = pinInput.value.slice(0, -1);
+        } else {
+            pinInput.value += key.getAttribute('data-digit');
+            submitPinWhenComplete();
+        }
+    });
+    view.querySelector('.pinLoginForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        return false;
+    });
+    view.querySelector('.btnUsePassword').addEventListener('click', function () {
+        view.querySelector('#txtManualName').value = pinInput.getAttribute('data-username');
+        view.querySelector('#txtManualPassword').value = '';
+        showManualForm(view, true, true);
+    });
+    view.querySelector('.btnPinCancel').addEventListener('click', showVisualForm);
     view.querySelector('.btnForgotPassword').addEventListener('click', function () {
         Dashboard.navigate('forgotpassword');
     });

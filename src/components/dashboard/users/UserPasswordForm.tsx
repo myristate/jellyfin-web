@@ -12,6 +12,11 @@ type IProps = {
     user: UserDto
 };
 
+// Finly's server adds whether the user can sign in with a PIN from here
+type UserWithPin = UserDto & { HasPin?: boolean };
+
+const PIN_PATTERN = /^\d{4}$/;
+
 const UserPasswordForm: FunctionComponent<IProps> = ({ user }: IProps) => {
     const element = useRef<HTMLDivElement>(null);
     const libraryMenu = useMemo(async () => ((await import('../../../scripts/libraryMenu')).default), []);
@@ -32,18 +37,24 @@ const UserPasswordForm: FunctionComponent<IProps> = ({ user }: IProps) => {
 
         (await libraryMenu).setTitle(user.Name);
 
-        if (user.HasConfiguredPassword) {
-            if (!user.Policy?.IsAdministrator) {
-                (page.querySelector('#btnResetPassword') as HTMLDivElement).classList.remove('hide');
-            }
-            (page.querySelector('#fldCurrentPassword') as HTMLDivElement).classList.remove('hide');
-        } else {
-            (page.querySelector('#btnResetPassword') as HTMLDivElement).classList.add('hide');
-            (page.querySelector('#fldCurrentPassword') as HTMLDivElement).classList.add('hide');
-        }
+        const hasPin = (user as UserWithPin).HasPin === true;
+        const isSelf = loggedInUser?.Id === user.Id;
+
+        // Any user may do without a password, the server keeps one administrator with a password
+        (page.querySelector('#btnResetPassword') as HTMLDivElement).classList.toggle('hide', !user.HasConfiguredPassword);
+        (page.querySelector('#fldCurrentPassword') as HTMLDivElement).classList.toggle('hide', !user.HasPassword);
 
         const canChangePassword = loggedInUser?.Policy?.IsAdministrator || user.Policy.EnableUserPreferenceAccess;
         (page.querySelector('.passwordSection') as HTMLDivElement).classList.toggle('hide', !canChangePassword);
+        (page.querySelector('.pinSection') as HTMLDivElement).classList.toggle('hide', !canChangePassword);
+
+        (page.querySelector('.pinStatus') as HTMLDivElement).textContent = globalize.translate(hasPin ? 'PinStatusSet' : 'PinStatusNotSet');
+        (page.querySelector('#btnRemovePin') as HTMLButtonElement).classList.toggle('hide', !hasPin);
+        // Your own PIN needs your current password or PIN, an administrator can change anyone else's
+        (page.querySelector('#fldPinCurrent') as HTMLDivElement).classList.toggle('hide', !(isSelf && user.HasPassword));
+        (page.querySelector('#txtPinCurrent') as HTMLInputElement).value = '';
+        (page.querySelector('#txtNewPin') as HTMLInputElement).value = '';
+        (page.querySelector('#txtNewPinConfirm') as HTMLInputElement).value = '';
 
         import('../../autoFocuser').then(({ default: autoFocuser }) => {
             autoFocuser.autoFocus(page);
@@ -100,16 +111,89 @@ const UserPasswordForm: FunctionComponent<IProps> = ({ user }: IProps) => {
             window.ApiClient.updateUserPassword(user.Id, currentPassword, newPassword).then(function () {
                 loading.hide();
                 toast(globalize.translate('PasswordSaved'));
-
-                loadUser().catch(err => {
-                    console.error('[UserPasswordForm] failed to load user', err);
-                });
-            }, function () {
+                refreshUser();
+            }, function (response: Response) {
                 loading.hide();
-                Dashboard.alert({
-                    title: globalize.translate('HeaderLoginFailure'),
-                    message: globalize.translate('MessageInvalidUser')
+                showServerRefusal(response, 'HeaderLoginFailure', 'MessageInvalidUser');
+            });
+        };
+
+        // The server explains refusals such as removing the last administrator password
+        const showServerRefusal = (response: Response | undefined, titleKey: string, fallbackKey: string) => {
+            const show = (message?: string) => Dashboard.alert({
+                title: globalize.translate(titleKey),
+                message: message || globalize.translate(fallbackKey)
+            });
+
+            if (response?.status === 400 && typeof response.text === 'function') {
+                response.text().then(text => show(text), () => show());
+            } else {
+                show();
+            }
+        };
+
+        const postPin = (body: { CurrentPw?: string, NewPin?: string, ResetPin?: boolean }) => window.ApiClient.ajax({
+            type: 'POST',
+            url: window.ApiClient.getUrl('Users/Pin', { userId: user.Id }),
+            data: JSON.stringify(body),
+            contentType: 'application/json'
+        });
+
+        const currentForPin = () => {
+            const field = page.querySelector('#fldPinCurrent') as HTMLDivElement;
+            return field.classList.contains('hide') ? '' : (page.querySelector('#txtPinCurrent') as HTMLInputElement).value;
+        };
+
+        const onSubmitPin = (e: Event) => {
+            e.preventDefault();
+
+            const newPin = (page.querySelector('#txtNewPin') as HTMLInputElement).value;
+            if (!PIN_PATTERN.test(newPin)) {
+                toast(globalize.translate('PinFormatError'));
+                return;
+            }
+            if (newPin !== (page.querySelector('#txtNewPinConfirm') as HTMLInputElement).value) {
+                toast(globalize.translate('PinMatchError'));
+                return;
+            }
+
+            loading.show();
+            postPin({ CurrentPw: currentForPin(), NewPin: newPin }).then(function () {
+                loading.hide();
+                toast(globalize.translate('PinSaved'));
+                refreshUser();
+            }, function (response: Response) {
+                loading.hide();
+                showServerRefusal(response, 'HeaderLoginFailure', 'MessageInvalidUser');
+            });
+        };
+
+        const removePin = () => {
+            confirm(globalize.translate('PinRemoveConfirmation'), globalize.translate('RemovePin')).then(function () {
+                loading.show();
+                postPin({ CurrentPw: currentForPin(), ResetPin: true }).then(function () {
+                    loading.hide();
+                    toast(globalize.translate('PinRemoved'));
+                    refreshUser();
+                }, function (response: Response) {
+                    loading.hide();
+                    showServerRefusal(response, 'HeaderLoginFailure', 'MessageInvalidUser');
                 });
+            }).catch(() => {
+                // confirm dialog was closed
+            });
+        };
+
+        // Fetch the user again so the page shows whether a PIN is set now
+        const refreshUser = () => {
+            if (!user.Id) return;
+            window.ApiClient.getUser(user.Id).then((updated: UserDto) => {
+                (user as UserWithPin).HasPin = (updated as UserWithPin).HasPin;
+                user.HasPassword = updated.HasPassword;
+                user.HasConfiguredPassword = updated.HasConfiguredPassword;
+                return loadUser();
+            }).catch(err => {
+                console.error('[UserPasswordForm] failed to reload user', err);
             });
         };
 
@@ -124,11 +208,10 @@ const UserPasswordForm: FunctionComponent<IProps> = ({ user }: IProps) => {
                             message: globalize.translate('PasswordResetComplete'),
                             title: globalize.translate('ResetPassword')
                         });
-                        loadUser().catch(err => {
-                            console.error('[UserPasswordForm] failed to load user', err);
-                        });
-                    }).catch(err => {
-                        console.error('[UserPasswordForm] failed to reset user password', err);
+                        refreshUser();
+                    }).catch((response: Response) => {
+                        loading.hide();
+                        showServerRefusal(response, 'ResetPassword', 'MessageInvalidUser');
                     });
                 }
             }).catch(() => {
@@ -138,10 +221,14 @@ const UserPasswordForm: FunctionComponent<IProps> = ({ user }: IProps) => {
 
         (page.querySelector('.updatePasswordForm') as HTMLFormElement).addEventListener('submit', onSubmit);
         (page.querySelector('#btnResetPassword') as HTMLButtonElement).addEventListener('click', resetPassword);
+        (page.querySelector('.updatePinForm') as HTMLFormElement).addEventListener('submit', onSubmitPin);
+        (page.querySelector('#btnRemovePin') as HTMLButtonElement).addEventListener('click', removePin);
 
         return () => {
             (page.querySelector('.updatePasswordForm') as HTMLFormElement).removeEventListener('submit', onSubmit);
             (page.querySelector('#btnResetPassword') as HTMLButtonElement).removeEventListener('click', resetPassword);
+            (page.querySelector('.updatePinForm') as HTMLFormElement).removeEventListener('submit', onSubmitPin);
+            (page.querySelector('#btnRemovePin') as HTMLButtonElement).removeEventListener('click', removePin);
         };
     }, [loadUser, user]);
 
@@ -156,7 +243,7 @@ const UserPasswordForm: FunctionComponent<IProps> = ({ user }: IProps) => {
                         <Input
                             type='password'
                             id='txtCurrentPassword'
-                            label={globalize.translate('LabelCurrentPassword')}
+                            label={globalize.translate('LabelCurrentPasswordOrPin')}
                             autoComplete='off'
                         />
                     </div>
@@ -188,6 +275,58 @@ const UserPasswordForm: FunctionComponent<IProps> = ({ user }: IProps) => {
                             id='btnResetPassword'
                             className='raised button-cancel block hide'
                             title={globalize.translate('ResetPassword')}
+                        />
+                    </div>
+                </div>
+            </form>
+            <form
+                className='updatePinForm pinSection hide'
+                style={{ margin: '0 auto 2em' }}
+            >
+                <div className='detailSection'>
+                    <h2 className='sectionTitle'>{globalize.translate('HeaderSignInPin')}</h2>
+                    <div className='fieldDescription' style={{ marginBottom: '1em' }}>{globalize.translate('PinSignInHelp')}</div>
+                    <div className='pinStatus' style={{ marginBottom: '1em' }} />
+                    <div id='fldPinCurrent' className='inputContainer hide'>
+                        <Input
+                            type='password'
+                            id='txtPinCurrent'
+                            label={globalize.translate('LabelCurrentPasswordOrPin')}
+                            autoComplete='off'
+                        />
+                    </div>
+                    <div className='inputContainer'>
+                        <Input
+                            type='password'
+                            id='txtNewPin'
+                            label={globalize.translate('LabelNewPin')}
+                            autoComplete='off'
+                            inputMode='numeric'
+                            maxLength={4}
+                        />
+                    </div>
+                    <div className='inputContainer'>
+                        <Input
+                            type='password'
+                            id='txtNewPinConfirm'
+                            label={globalize.translate('LabelNewPinConfirm')}
+                            autoComplete='off'
+                            inputMode='numeric'
+                            maxLength={4}
+                        />
+                    </div>
+                    <br />
+                    <div>
+                        <Button
+                            type='submit'
+                            className='raised button-submit block'
+                            title={globalize.translate('SavePin')}
+                        />
+                        <Button
+                            type='button'
+                            id='btnRemovePin'
+                            className='raised button-cancel block hide'
+                            title={globalize.translate('RemovePin')}
                         />
                     </div>
                 </div>
