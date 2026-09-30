@@ -7,6 +7,8 @@ import loading from '../../loading/loading';
 import toast from '../../toast/toast';
 import Button from '../../../elements/emby-button/Button';
 import Input from '../../../elements/emby-input/Input';
+import { QUERY_KEY as USER_QUERY_KEY } from '../../../hooks/api/useUser';
+import { queryClient } from '../../../utils/query/queryClient';
 
 type IProps = {
     user: UserDto
@@ -40,8 +42,9 @@ const UserPasswordForm: FunctionComponent<IProps> = ({ user }: IProps) => {
         const hasPin = (user as UserWithPin).HasPin === true;
         const isSelf = loggedInUser?.Id === user.Id;
 
-        // Any user may do without a password, the server keeps one administrator with a password
-        (page.querySelector('#btnResetPassword') as HTMLDivElement).classList.toggle('hide', !user.HasConfiguredPassword);
+        // Any user may do without a password, the server keeps one administrator with a password.
+        // Resetting is for an administrator clearing someone else's password, not your own (Finly)
+        (page.querySelector('#btnResetPassword') as HTMLDivElement).classList.toggle('hide', isSelf || !user.HasConfiguredPassword);
         (page.querySelector('#fldCurrentPassword') as HTMLDivElement).classList.toggle('hide', !user.HasPassword);
 
         const canChangePassword = loggedInUser?.Policy?.IsAdministrator || user.Policy.EnableUserPreferenceAccess;
@@ -50,7 +53,7 @@ const UserPasswordForm: FunctionComponent<IProps> = ({ user }: IProps) => {
 
         (page.querySelector('.pinStatus') as HTMLDivElement).textContent = globalize.translate(hasPin ? 'PinStatusSet' : 'PinStatusNotSet');
         (page.querySelector('#btnRemovePin') as HTMLButtonElement).classList.toggle('hide', !hasPin);
-        // Your own PIN needs your current password or PIN, an administrator can change anyone else's
+        // Your own PIN needs your current password, an administrator can change anyone else's
         (page.querySelector('#fldPinCurrent') as HTMLDivElement).classList.toggle('hide', !(isSelf && user.HasPassword));
         (page.querySelector('#txtPinCurrent') as HTMLInputElement).value = '';
         (page.querySelector('#txtNewPin') as HTMLInputElement).value = '';
@@ -184,15 +187,9 @@ const UserPasswordForm: FunctionComponent<IProps> = ({ user }: IProps) => {
             });
         };
 
-        // Fetch the user again so the page shows whether a PIN is set now
+        // Fetch the user again so the page shows whether a password and PIN are set now
         const refreshUser = () => {
-            if (!user.Id) return;
-            window.ApiClient.getUser(user.Id).then((updated: UserDto) => {
-                (user as UserWithPin).HasPin = (updated as UserWithPin).HasPin;
-                user.HasPassword = updated.HasPassword;
-                user.HasConfiguredPassword = updated.HasConfiguredPassword;
-                return loadUser();
-            }).catch(err => {
+            queryClient.invalidateQueries({ queryKey: [ USER_QUERY_KEY ] }).catch(err => {
                 console.error('[UserPasswordForm] failed to reload user', err);
             });
         };
@@ -243,7 +240,7 @@ const UserPasswordForm: FunctionComponent<IProps> = ({ user }: IProps) => {
                         <Input
                             type='password'
                             id='txtCurrentPassword'
-                            label={globalize.translate('LabelCurrentPasswordOrPin')}
+                            label={globalize.translate('LabelCurrentPassword')}
                             autoComplete='off'
                         />
                     </div>
@@ -291,7 +288,7 @@ const UserPasswordForm: FunctionComponent<IProps> = ({ user }: IProps) => {
                         <Input
                             type='password'
                             id='txtPinCurrent'
-                            label={globalize.translate('LabelCurrentPasswordOrPin')}
+                            label={globalize.translate('LabelCurrentPassword')}
                             autoComplete='off'
                         />
                     </div>
