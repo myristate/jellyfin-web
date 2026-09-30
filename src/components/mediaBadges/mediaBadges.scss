@@ -11,6 +11,6 @@
 }
 
 .mediaBadge-dolby {
-    border-color: #00a4dc;
-    color: #00a4dc;
+    border-color: var(--jf-palette-primary-main, #00a4dc);
+    color: var(--jf-palette-primary-main, #00a4dc);
 }
