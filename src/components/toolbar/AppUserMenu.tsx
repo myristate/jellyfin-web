@@ -59,9 +59,9 @@ const AppUserMenu: FC<AppUserMenuProps> = ({
         onMenuClose();
     }, [ onMenuClose ]);
 
-    // Signing out goes back to the profile picker
+    // Signing out goes back to this server's profile picker
     const onSwitchProfileClick = useCallback(() => {
-        Dashboard.logout();
+        Dashboard.switchProfile();
         onMenuClose();
     }, [ onMenuClose ]);
 

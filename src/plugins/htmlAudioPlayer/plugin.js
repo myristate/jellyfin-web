@@ -5,6 +5,7 @@ import { MediaError } from 'types/mediaError';
 import browser from '../../scripts/browser';
 import { appHost } from '../../components/apphost';
 import * as htmlMediaHelper from '../../components/htmlMediaHelper';
+import { appRouter } from '../../components/router/appRouter';
 import profileBuilder from '../../scripts/browserDeviceProfile';
 import { getIncludeCorsCredentials } from '../../scripts/settings/webSettings';
 import Events from '../../utils/events.ts';
@@ -57,7 +58,7 @@ function requireHlsPlayer(callback) {
         hls.DefaultConfig.liveBackBufferLength = 90;
         // Run the transmuxer in hls.js's own worker file: the worker it builds from the bundled code fails with
         // "e is not defined", which left live TV on a blank screen
-        hls.DefaultConfig.workerPath = 'libraries/hls.worker.js';
+        hls.DefaultConfig.workerPath = `${appRouter.baseUrl()}/libraries/hls.worker.js`;
         window.Hls = hls;
         callback();
     });

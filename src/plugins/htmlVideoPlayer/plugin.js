@@ -126,7 +126,7 @@ function requireHlsPlayer(callback) {
         hls.DefaultConfig.liveBackBufferLength = 90;
         // Run the transmuxer in hls.js's own worker file: the worker it builds from the bundled code fails with
         // "e is not defined", which left live TV on a blank screen
-        hls.DefaultConfig.workerPath = 'libraries/hls.worker.js';
+        hls.DefaultConfig.workerPath = `${appRouter.baseUrl()}/libraries/hls.worker.js`;
         window.Hls = hls;
         callback();
     });

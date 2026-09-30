@@ -19,6 +19,7 @@ import {
     getHiddenItems,
     getProfileLevels,
     NO_LEVEL,
+    notifyProfileAccessChanged,
     restoreItem,
     type ProfileLevel
 } from 'apps/dashboard/features/users/api/profileLevels';
@@ -69,8 +70,13 @@ function handleSaveUser(
         (userPolicy as { ProfileLevelId?: string }).ProfileLevelId = levelId || NO_LEVEL;
         ServerConnections.getCurrentApiClientAsync()
             .then(apiClient => apiClient.updateUserPolicy(userId, userPolicy))
-            .then(() => onSaveComplete())
+            .then(() => {
+                // The kids view caches who can see what (Finly)
+                notifyProfileAccessChanged();
+                onSaveComplete();
+            })
             .catch(err => {
+                loading.hide();
                 console.error('[userparentalcontrol] failed to update user policy', err);
             });
     };
@@ -358,11 +364,15 @@ const ParentalControl = ({ userId }: ParentalControlProps) => {
         (page.querySelector('#btnAddAllowedTag') as HTMLButtonElement).addEventListener('click', showAllowedTagPopup);
         (page.querySelector('#btnAddBlockedTag') as HTMLButtonElement).addEventListener('click', showBlockedTagPopup);
         (page.querySelector('.userParentalControlForm') as HTMLFormElement).addEventListener('submit', onSubmit);
-        const onLevelChange = (e: Event) => setLevelId((e.target as HTMLSelectElement).value);
-        (page.querySelector('#selectProfileLevel') as HTMLSelectElement).addEventListener('change', onLevelChange);
+        // Listen on the form, the level select is created again whenever its options change (Finly)
+        const onLevelChange = (e: Event) => {
+            const target = e.target as HTMLSelectElement | null;
+            if (target?.id === 'selectProfileLevel') setLevelId(target.value);
+        };
+        (page.querySelector('.userParentalControlForm') as HTMLFormElement).addEventListener('change', onLevelChange);
 
         return () => {
-            (page.querySelector('#selectProfileLevel') as HTMLSelectElement).removeEventListener('change', onLevelChange);
+            (page.querySelector('.userParentalControlForm') as HTMLFormElement).removeEventListener('change', onLevelChange);
             (page.querySelector('#btnAddSchedule') as HTMLButtonElement).removeEventListener('click', accessSchedulesPopupCallback);
             (page.querySelector('#btnAddAllowedTag') as HTMLButtonElement).removeEventListener('click', showAllowedTagPopup);
             (page.querySelector('#btnAddBlockedTag') as HTMLButtonElement).removeEventListener('click', showBlockedTagPopup);
@@ -399,6 +409,7 @@ const ParentalControl = ({ userId }: ParentalControlProps) => {
         if (!itemId) return;
         restoreItem(window.ApiClient, userId, itemId).then(() => {
             setHiddenItems(items => items.filter(i => i.Id !== itemId));
+            notifyProfileAccessChanged(itemId);
         }).catch(err => {
             console.error('[userparentalcontrol] failed to put the item back', err);
         });

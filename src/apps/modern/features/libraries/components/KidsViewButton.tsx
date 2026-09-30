@@ -3,7 +3,7 @@ import Button from '@mui/material/Button';
 import Tooltip from '@mui/material/Tooltip';
 import React, { type FC, useCallback, useEffect, useState } from 'react';
 
-import { chooseTarget, getTarget, KIDS_VIEW_CHANGED } from 'components/kidsView/kidsView';
+import { chooseTarget, getTarget, KIDS_VIEW_CHANGED, start } from 'components/kidsView/kidsView';
 import globalize from 'lib/globalize';
 
 /**
@@ -15,6 +15,10 @@ const KidsViewButton: FC = () => {
     useEffect(() => {
         const onChange = () => setTarget(getTarget());
         document.addEventListener(KIDS_VIEW_CHANGED, onChange);
+        // Normally already started when the administrator signed in
+        start().then(onChange).catch(() => {
+            // the kids view logs its own failures
+        });
         return () => document.removeEventListener(KIDS_VIEW_CHANGED, onChange);
     }, []);
 
