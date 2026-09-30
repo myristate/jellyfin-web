@@ -1,0 +1,28 @@
+.kidsViewBadge {
+    position: absolute;
+    top: 0.4em;
+    left: 0.4em;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.2em;
+    height: 2.2em;
+    border-radius: 50%;
+    background: #00a4dc;
+    color: #fff;
+    box-shadow: 0 0 0.3em rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+
+    .material-icons {
+        font-size: 1.6em;
+    }
+}
+
+.kidsViewBadge-some {
+    background: rgba(0, 164, 220, 0.45);
+}
+
+.btnKidsView.kidsViewActive {
+    color: #00a4dc;
+}

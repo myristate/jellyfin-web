@@ -15,6 +15,7 @@ import type { LibraryViewSettings } from 'types/library';
 import { LibraryTab } from 'types/libraryTab';
 
 import FilterButton from './filter/FilterButton';
+import KidsViewButton from './KidsViewButton';
 import LibraryViewMenu from './LibraryViewMenu';
 import NewCollectionButton from './NewCollectionButton';
 import NewPlaylistButton from './NewPlaylistButton';
@@ -229,6 +230,8 @@ const LibraryToolbar: FC = () => {
                                 setLibraryViewSettings={setLibraryViewSettings}
                             />
                         )}
+
+                        {user?.Policy?.IsAdministrator && <KidsViewButton />}
                     </ButtonGroup>
 
                     {isPaginationEnabled && isUserPaginationEnabled && (

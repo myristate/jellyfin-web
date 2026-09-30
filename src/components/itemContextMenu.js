@@ -15,7 +15,16 @@ import itemHelper, { canEditPlaylist } from './itemHelper';
 import { playbackManager } from './playback/playbackmanager';
 import toast from './toast/toast';
 import confirm from './confirm/confirm';
-import { getProfileLevels, hideItem, hideItemFromLevel } from '../apps/dashboard/features/users/api/profileLevels';
+import {
+    allowItem,
+    allowItemForLevel,
+    getProfileAccess,
+    getProfileLevels,
+    hideItem,
+    hideItemFromLevel,
+    sameId
+} from '../apps/dashboard/features/users/api/profileLevels';
+import { invalidate as invalidateKidsView } from './kidsView/kidsView';
 import * as userSettings from '../scripts/settings/userSettings';
 
 /** Item types that support downloading all children. */
@@ -237,16 +246,20 @@ export async function getCommands(options) {
         });
 
         try {
-            const levels = await getProfileLevels(ServerConnections.getApiClient(item.ServerId));
-            // Administrators get every restricted level, everyone else the one they are on
-            const ownLevel = (user.Policy?.ProfileLevelId || '').replace(/-/g, '');
-            const offered = levels.filter(l => l.IsRestricted && (user.Policy?.IsAdministrator || l.Id.replace(/-/g, '') === ownLevel));
-            for (const level of offered) {
-                commands.push({
-                    name: globalize.translate('RemoveFromLevel', level.Name),
-                    id: 'hidefromlevel:' + level.Id,
-                    icon: 'visibility_off'
-                });
+            const apiClient = ServerConnections.getApiClient(item.ServerId);
+            const levels = await getProfileLevels(apiClient);
+            if (user.Policy?.IsAdministrator) {
+                await addProfileCommands(commands, apiClient, item, levels);
+            } else {
+                // Everyone else can take it away from the level they are on
+                const ownLevel = levels.find(l => l.IsRestricted && sameId(l.Id, user.Policy?.ProfileLevelId));
+                if (ownLevel) {
+                    commands.push({
+                        name: globalize.translate('RemoveFromLevel', ownLevel.Name),
+                        id: 'hidefromlevel:' + ownLevel.Id,
+                        icon: 'visibility_off'
+                    });
+                }
             }
         } catch (err) {
             console.warn('[itemContextMenu] unable to load profile levels', err);
@@ -423,21 +436,64 @@ function getResolveFunction(resolve, commandId, changed, deleted, itemId) {
     };
 }
 
+/**
+ * Administrators add an item to, or remove it from, each restricted profile and level: Add where some of them can't
+ * see it yet, Remove where some can.
+ */
+async function addProfileCommands(commands, apiClient, item, levels) {
+    const access = await getProfileAccess(apiClient, [ item.Id ]);
+    const visibleTo = Object.entries(access.Items).find(([ id ]) => sameId(id, item.Id))?.[1] || [];
+    const sees = profile => visibleTo.some(id => sameId(id, profile.Id));
+
+    for (const level of levels.filter(l => l.IsRestricted)) {
+        const members = access.Profiles.filter(p => sameId(p.LevelId, level.Id));
+        if (!members.length) continue;
+        if (!members.every(sees)) {
+            commands.push({ name: globalize.translate('AddToLevel', level.Name), id: 'allowlevel:' + level.Id, icon: 'child_care' });
+        }
+        if (members.some(sees)) {
+            commands.push({ name: globalize.translate('RemoveFromLevel', level.Name), id: 'hidefromlevel:' + level.Id, icon: 'visibility_off' });
+        }
+    }
+
+    for (const profile of access.Profiles) {
+        commands.push(sees(profile) ?
+            { name: globalize.translate('RemoveFromProfile', profile.Name), id: 'hideuser:' + profile.Id, icon: 'visibility_off' } :
+            { name: globalize.translate('AddToProfile', profile.Name), id: 'allowuser:' + profile.Id, icon: 'child_care' });
+    }
+}
+
+function addToProfiles(apiClient, item, id, resolve, reject) {
+    const [ kind, targetId ] = id.split(':');
+    const request = kind === 'allowlevel' ? allowItemForLevel(apiClient, item.Id, targetId) : allowItem(apiClient, targetId, item.Id);
+    request.then(function () {
+        toast(globalize.translate('AddedToProfiles', item.Name));
+        invalidateKidsView(item.Id);
+        resolve({ command: id, updated: true, deleted: false, itemId: item.Id });
+    }, function () {
+        toast(globalize.translate('ErrorDefault'));
+        reject();
+    });
+}
+
 function hideFromProfile(apiClient, item, id, resolve, reject) {
-    const user = apiClient.getCurrentUserId();
-    const levelId = id.startsWith('hidefromlevel:') ? id.substring('hidefromlevel:'.length) : null;
+    const me = apiClient.getCurrentUserId();
+    const [ kind, targetId ] = id.split(':');
+    const levelId = kind === 'hidefromlevel' ? targetId : null;
+    const userId = kind === 'hideuser' ? targetId : me;
     const text = levelId ?
         globalize.translate('RemoveFromLevelConfirm', item.Name) :
         globalize.translate('RemoveFromProfileConfirm', item.Name);
 
     confirm(text, globalize.translate('HeaderRemoveFromLibrary')).then(function () {
-        const request = levelId ? hideItemFromLevel(apiClient, item.Id, levelId) : hideItem(apiClient, user, item.Id);
+        const request = levelId ? hideItemFromLevel(apiClient, item.Id, levelId) : hideItem(apiClient, userId, item.Id);
         return request.then(function () {
             toast(globalize.translate('RemovedFromLibrary', item.Name));
+            invalidateKidsView(item.Id);
             // Take the card away when it's gone from this profile
-            return levelId ?
-                apiClient.getItem(user, item.Id).then(() => false, () => true) :
-                true;
+            return sameId(userId, me) && !levelId ?
+                true :
+                apiClient.getItem(me, item.Id).then(() => false, () => true);
         }).then(function (goneForMe) {
             resolve({ command: id, updated: true, deleted: goneForMe, itemId: item.Id });
         });
@@ -453,9 +509,15 @@ function executeCommand(item, id, options) {
     const apiClient = ServerConnections.getApiClient(serverId);
     const api = ServerConnections.getApi(serverId);
 
-    if (id === 'hidefromme' || id.startsWith('hidefromlevel:')) {
+    if (id === 'hidefromme' || id.startsWith('hidefromlevel:') || id.startsWith('hideuser:')) {
         return new Promise(function (resolve, reject) {
             hideFromProfile(apiClient, item, id, resolve, reject);
+        });
+    }
+
+    if (id.startsWith('allowlevel:') || id.startsWith('allowuser:')) {
+        return new Promise(function (resolve, reject) {
+            addToProfiles(apiClient, item, id, resolve, reject);
         });
     }
 

@@ -45,3 +45,28 @@ export const restoreItem = (apiClient: ApiClient, userId: string, itemId: string
 
 export const hideItemFromLevel = (apiClient: ApiClient, itemId: string, levelId: string) =>
     apiClient.ajax({ type: 'POST', url: apiClient.getUrl(`Items/${itemId}/HideFromLevel/${levelId}`) });
+
+/** A profile with restrictions, as the server lists it with who can see what. */
+export interface AccessProfile {
+    Id: string;
+    Name: string;
+    LevelId?: string | null;
+}
+
+export interface ProfileAccess {
+    Profiles: AccessProfile[];
+    /** For each item asked about, the ids of the restricted profiles that can see it. */
+    Items: Record<string, string[]>;
+}
+
+export const getProfileAccess = (apiClient: ApiClient, itemIds: string[]): Promise<ProfileAccess> =>
+    apiClient.getJSON(apiClient.getUrl('Items/ProfileAccess', { ids: itemIds.join(',') }));
+
+export const allowItem = (apiClient: ApiClient, userId: string, itemId: string) =>
+    apiClient.ajax({ type: 'POST', url: apiClient.getUrl(`Users/${userId}/AllowedItems/${itemId}`) });
+
+export const allowItemForLevel = (apiClient: ApiClient, itemId: string, levelId: string) =>
+    apiClient.ajax({ type: 'POST', url: apiClient.getUrl(`Items/${itemId}/AllowForLevel/${levelId}`) });
+
+export const sameId = (a?: string | null, b?: string | null) =>
+    !!a && !!b && a.replace(/-/g, '').toLowerCase() === b.replace(/-/g, '').toLowerCase();
