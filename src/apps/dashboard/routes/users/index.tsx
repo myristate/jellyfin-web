@@ -141,12 +141,18 @@ const UserProfiles = () => {
             navigate('/dashboard/users/add');
         };
 
+        const onProfileLevelsClick = function() {
+            navigate('/dashboard/users/levels');
+        };
+
         page.addEventListener('click', onPageClick);
         (page.querySelector('#btnAddUser') as HTMLButtonElement).addEventListener('click', onAddUserClick);
+        (page.querySelector('#btnProfileLevels') as HTMLButtonElement).addEventListener('click', onProfileLevelsClick);
 
         return () => {
             page.removeEventListener('click', onPageClick);
             (page.querySelector('#btnAddUser') as HTMLButtonElement).removeEventListener('click', onAddUserClick);
+            (page.querySelector('#btnProfileLevels') as HTMLButtonElement).removeEventListener('click', onProfileLevelsClick);
         };
     }, [navigate, deleteUser, location.state?.openSavedToast]);
 
@@ -175,6 +181,15 @@ const UserProfiles = () => {
                         btnTitle='ButtonAddUser'
                         btnIcon='add'
                     />
+                    <button
+                        is='emby-button'
+                        type='button'
+                        id='btnProfileLevels'
+                        className='raised button-cancel'
+                        style={{ marginBottom: '1em' }}
+                    >
+                        <span>{globalize.translate('HeaderProfileLevels')}</span>
+                    </button>
                 </div>
 
                 <div className='localUsers itemsContainer vertical-wrap'>

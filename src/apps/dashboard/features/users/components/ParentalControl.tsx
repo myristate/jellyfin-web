@@ -15,6 +15,14 @@ import SelectElement from 'elements/SelectElement';
 import prompt from 'components/prompt/prompt';
 import { ServerConnections } from 'lib/jellyfin-apiclient';
 import Toast from 'apps/dashboard/components/Toast';
+import {
+    getHiddenItems,
+    getProfileLevels,
+    NO_LEVEL,
+    restoreItem,
+    type ProfileLevel
+} from 'apps/dashboard/features/users/api/profileLevels';
+import type { BaseItemDto } from '@jellyfin/sdk/lib/generated-client/models/base-item-dto';
 
 interface ParentalControlProps {
     userId: string;
@@ -37,6 +45,7 @@ function handleSaveUser(
     getBlockedTagsFromPage: () => string[],
     onSaveComplete: () => void
 ) {
+    // The chosen profile level, whose restrictions the server applies
     return (user: UserDto) => {
         const userId = user.Id;
         const userPolicy = user.Policy;
@@ -56,6 +65,8 @@ function handleSaveUser(
         userPolicy.AccessSchedules = getSchedulesFromPage();
         userPolicy.AllowedTags = getAllowedTagsFromPage();
         userPolicy.BlockedTags = getBlockedTagsFromPage();
+        const levelId = (page.querySelector('#selectProfileLevel') as HTMLSelectElement).value;
+        (userPolicy as { ProfileLevelId?: string }).ProfileLevelId = levelId || NO_LEVEL;
         ServerConnections.getCurrentApiClientAsync()
             .then(apiClient => apiClient.updateUserPolicy(userId, userPolicy))
             .then(() => onSaveComplete())
@@ -73,6 +84,9 @@ const ParentalControl = ({ userId }: ParentalControlProps) => {
     const [ allowedTags, setAllowedTags ] = useState<string[]>([]);
     const [ blockedTags, setBlockedTags ] = useState<string[]>([]);
     const [ isSettingsSavedToastOpen, setIsSettingsSavedToastOpen ] = useState(false);
+    const [ levels, setLevels ] = useState<ProfileLevel[]>([]);
+    const [ levelId, setLevelId ] = useState('');
+    const [ hiddenItems, setHiddenItems ] = useState<BaseItemDto[]>([]);
     const libraryMenu = useMemo(async () => ((await import('scripts/libraryMenu')).default), []);
 
     const element = useRef<HTMLDivElement>(null);
@@ -144,6 +158,7 @@ const ParentalControl = ({ userId }: ParentalControlProps) => {
 
         setAllowedTags(user.Policy?.AllowedTags || []);
         setBlockedTags(user.Policy?.BlockedTags || []);
+        setLevelId(((user.Policy as { ProfileLevelId?: string } | undefined)?.ProfileLevelId || '').replace(/-/g, ''));
 
         // Build the grouped ratings array
         const ratings: ParentalRating[] = [];
@@ -209,10 +224,15 @@ const ParentalControl = ({ userId }: ParentalControlProps) => {
         loading.show();
         const promise1 = window.ApiClient.getUser(userId);
         const promise2 = window.ApiClient.getParentalRatings();
-        Promise.all([promise1, promise2]).then(function (responses) {
+        const promise3 = getProfileLevels(window.ApiClient);
+        Promise.all([promise1, promise2, promise3]).then(function (responses) {
+            setLevels(responses[2]);
             loadUser(responses[0], responses[1]);
         }).catch(err => {
             console.error('[userparentalcontrol] failed to load data', err);
+        });
+        getHiddenItems(window.ApiClient, userId).then(result => setHiddenItems(result.Items || [])).catch(err => {
+            console.error('[userparentalcontrol] failed to load removed items', err);
         });
     }, [loadUser, userId]);
 
@@ -338,8 +358,11 @@ const ParentalControl = ({ userId }: ParentalControlProps) => {
         (page.querySelector('#btnAddAllowedTag') as HTMLButtonElement).addEventListener('click', showAllowedTagPopup);
         (page.querySelector('#btnAddBlockedTag') as HTMLButtonElement).addEventListener('click', showBlockedTagPopup);
         (page.querySelector('.userParentalControlForm') as HTMLFormElement).addEventListener('submit', onSubmit);
+        const onLevelChange = (e: Event) => setLevelId((e.target as HTMLSelectElement).value);
+        (page.querySelector('#selectProfileLevel') as HTMLSelectElement).addEventListener('change', onLevelChange);
 
         return () => {
+            (page.querySelector('#selectProfileLevel') as HTMLSelectElement).removeEventListener('change', onLevelChange);
             (page.querySelector('#btnAddSchedule') as HTMLButtonElement).removeEventListener('click', accessSchedulesPopupCallback);
             (page.querySelector('#btnAddAllowedTag') as HTMLButtonElement).removeEventListener('click', showAllowedTagPopup);
             (page.querySelector('#btnAddBlockedTag') as HTMLButtonElement).removeEventListener('click', showBlockedTagPopup);
@@ -357,6 +380,31 @@ const ParentalControl = ({ userId }: ParentalControlProps) => {
 
         (page.querySelector('#selectMaxParentalRating') as HTMLSelectElement).value = String(maxParentalRating);
     }, [maxParentalRating, parentalRatings]);
+
+    useEffect(() => {
+        const select = element.current?.querySelector('#selectProfileLevel') as HTMLSelectElement | null;
+        if (select) select.value = levelId;
+    }, [levelId, levels]);
+
+    const optionProfileLevel = () => {
+        let content = `<option value=''>${escapeHTML(globalize.translate('ProfileLevelNone'))}</option>`;
+        levels.forEach(level => {
+            content += `<option value='${escapeHTML(level.Id.replace(/-/g, ''))}'>${escapeHTML(level.Name)}</option>`;
+        });
+        return content;
+    };
+
+    const onRestoreItem = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+        const itemId = e.currentTarget.getAttribute('data-itemid');
+        if (!itemId) return;
+        restoreItem(window.ApiClient, userId, itemId).then(() => {
+            setHiddenItems(items => items.filter(i => i.Id !== itemId));
+        }).catch(err => {
+            console.error('[userparentalcontrol] failed to put the item back', err);
+        });
+    }, [userId]);
+
+    const levelName = levels.find(l => l.Id.replace(/-/g, '') === levelId)?.Name;
 
     const optionMaxParentalRating = () => {
         let content = '';
@@ -394,80 +442,95 @@ const ParentalControl = ({ userId }: ParentalControlProps) => {
             <form className='userParentalControlForm'>
                 <div className='selectContainer'>
                     <SelectElement
-                        id='selectMaxParentalRating'
-                        label='LabelMaxParentalRating'
+                        id='selectProfileLevel'
+                        label='LabelProfileLevel'
                     >
-                        {optionMaxParentalRating()}
+                        {optionProfileLevel()}
                     </SelectElement>
                     <div className='fieldDescription'>
-                        {globalize.translate('MaxParentalRatingHelp')}
+                        {levelName ? globalize.translate('ProfileLevelSetBy', levelName) : globalize.translate('ProfileLevelHelp')}
+                        {' '}
+                        <a href='#/dashboard/users/levels' className='button-link'>{globalize.translate('ProfileLevelManage')}</a>
                     </div>
                 </div>
-                <div>
-                    <div className='blockUnratedItems'>
-                        <h3 className='checkboxListLabel'>
-                            {globalize.translate('HeaderBlockItemsWithNoRating')}
-                        </h3>
-                        <div className='checkboxList paperList' style={{ padding: '.5em 1em' }}>
-                            {unratedItems.map(Item => {
-                                return <CheckBoxElement
-                                    key={Item.value}
-                                    className='chkUnratedItem'
-                                    itemType={Item.value}
-                                    itemName={Item.name}
-                                    itemCheckedAttribute={Item.checkedAttribute}
+                <div className={levelName ? 'hide' : ''}>
+                    <div className='selectContainer'>
+                        <SelectElement
+                            id='selectMaxParentalRating'
+                            label='LabelMaxParentalRating'
+                        >
+                            {optionMaxParentalRating()}
+                        </SelectElement>
+                        <div className='fieldDescription'>
+                            {globalize.translate('MaxParentalRatingHelp')}
+                        </div>
+                    </div>
+                    <div>
+                        <div className='blockUnratedItems'>
+                            <h3 className='checkboxListLabel'>
+                                {globalize.translate('HeaderBlockItemsWithNoRating')}
+                            </h3>
+                            <div className='checkboxList paperList' style={{ padding: '.5em 1em' }}>
+                                {unratedItems.map(Item => {
+                                    return <CheckBoxElement
+                                        key={Item.value}
+                                        className='chkUnratedItem'
+                                        itemType={Item.value}
+                                        itemName={Item.name}
+                                        itemCheckedAttribute={Item.checkedAttribute}
+                                    />;
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                    <br />
+                    <div className='verticalSection' style={{ marginBottom: '2em' }}>
+                        <SectionTitleContainer
+                            SectionClassName='detailSectionHeader'
+                            title={globalize.translate('LabelAllowContentWithTags')}
+                            isBtnVisible={true}
+                            btnId='btnAddAllowedTag'
+                            btnClassName='fab submit sectionTitleButton'
+                            btnTitle='Add'
+                            btnIcon='add'
+                        />
+                        <div className='fieldDescription'>
+                            {globalize.translate('AllowContentWithTagsHelp')}
+                        </div>
+                        <div className='allowedTags' style={{ marginTop: '.5em' }}>
+                            {allowedTags?.map(tag => {
+                                return <TagList
+                                    key={tag}
+                                    tag={tag}
+                                    tagType='allowedTag'
+                                    removeTagCallback={removeAllowedTagsCallback}
                                 />;
                             })}
                         </div>
                     </div>
-                </div>
-                <br />
-                <div className='verticalSection' style={{ marginBottom: '2em' }}>
-                    <SectionTitleContainer
-                        SectionClassName='detailSectionHeader'
-                        title={globalize.translate('LabelAllowContentWithTags')}
-                        isBtnVisible={true}
-                        btnId='btnAddAllowedTag'
-                        btnClassName='fab submit sectionTitleButton'
-                        btnTitle='Add'
-                        btnIcon='add'
-                    />
-                    <div className='fieldDescription'>
-                        {globalize.translate('AllowContentWithTagsHelp')}
-                    </div>
-                    <div className='allowedTags' style={{ marginTop: '.5em' }}>
-                        {allowedTags?.map(tag => {
-                            return <TagList
-                                key={tag}
-                                tag={tag}
-                                tagType='allowedTag'
-                                removeTagCallback={removeAllowedTagsCallback}
-                            />;
-                        })}
-                    </div>
-                </div>
-                <div className='verticalSection' style={{ marginBottom: '2em' }}>
-                    <SectionTitleContainer
-                        SectionClassName='detailSectionHeader'
-                        title={globalize.translate('LabelBlockContentWithTags')}
-                        isBtnVisible={true}
-                        btnId='btnAddBlockedTag'
-                        btnClassName='fab submit sectionTitleButton'
-                        btnTitle='Add'
-                        btnIcon='add'
-                    />
-                    <div className='fieldDescription'>
-                        {globalize.translate('BlockContentWithTagsHelp')}
-                    </div>
-                    <div className='blockedTags' style={{ marginTop: '.5em' }}>
-                        {blockedTags.map(tag => {
-                            return <TagList
-                                key={tag}
-                                tag={tag}
-                                tagType='blockedTag'
-                                removeTagCallback={removeBlockedTagsTagsCallback}
-                            />;
-                        })}
+                    <div className='verticalSection' style={{ marginBottom: '2em' }}>
+                        <SectionTitleContainer
+                            SectionClassName='detailSectionHeader'
+                            title={globalize.translate('LabelBlockContentWithTags')}
+                            isBtnVisible={true}
+                            btnId='btnAddBlockedTag'
+                            btnClassName='fab submit sectionTitleButton'
+                            btnTitle='Add'
+                            btnIcon='add'
+                        />
+                        <div className='fieldDescription'>
+                            {globalize.translate('BlockContentWithTagsHelp')}
+                        </div>
+                        <div className='blockedTags' style={{ marginTop: '.5em' }}>
+                            {blockedTags.map(tag => {
+                                return <TagList
+                                    key={tag}
+                                    tag={tag}
+                                    tagType='blockedTag'
+                                    removeTagCallback={removeBlockedTagsTagsCallback}
+                                />;
+                            })}
+                        </div>
                     </div>
                 </div>
                 <div className='accessScheduleSection verticalSection' style={{ marginBottom: '2em' }}>
@@ -492,6 +555,32 @@ const ParentalControl = ({ userId }: ParentalControlProps) => {
                             />;
                         })}
                     </div>
+                </div>
+                <div className='verticalSection' style={{ marginBottom: '2em' }}>
+                    <h2 className='sectionTitle'>{globalize.translate('HeaderRemovedFromLibrary')}</h2>
+                    <div className='fieldDescription'>{globalize.translate('RemovedFromLibraryHelp')}</div>
+                    {hiddenItems.length === 0 ? (
+                        <p>{globalize.translate('RemovedFromLibraryNone')}</p>
+                    ) : (
+                        <div className='paperList'>
+                            {hiddenItems.map(item => (
+                                <div key={item.Id} className='listItem removedItem'>
+                                    <div className='listItemBody'>
+                                        <div className='listItemBodyText'>
+                                            {item.Name}{item.ProductionYear ? ` (${item.ProductionYear})` : ''}
+                                        </div>
+                                    </div>
+                                    <Button
+                                        type='button'
+                                        className='raised btnRestoreItem'
+                                        data-itemid={item.Id}
+                                        title={globalize.translate('ButtonRestore')}
+                                        onClick={onRestoreItem}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
                 <div>
                     <Button

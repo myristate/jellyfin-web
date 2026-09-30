@@ -14,6 +14,8 @@ import { appRouter } from './router/appRouter';
 import itemHelper, { canEditPlaylist } from './itemHelper';
 import { playbackManager } from './playback/playbackmanager';
 import toast from './toast/toast';
+import confirm from './confirm/confirm';
+import { getProfileLevels, hideItem, hideItemFromLevel } from '../apps/dashboard/features/users/api/profileLevels';
 import * as userSettings from '../scripts/settings/userSettings';
 
 /** Item types that support downloading all children. */
@@ -22,6 +24,17 @@ const DOWNLOAD_ALL_TYPES = [
     BaseItemKind.MusicAlbum,
     BaseItemKind.Season,
     BaseItemKind.Series
+];
+
+/** Item types a profile can remove from its library. */
+const HIDEABLE_TYPES = [
+    BaseItemKind.Movie,
+    BaseItemKind.Series,
+    BaseItemKind.Season,
+    BaseItemKind.Episode,
+    BaseItemKind.Video,
+    BaseItemKind.MusicVideo,
+    BaseItemKind.BoxSet
 ];
 
 function getDeleteLabel(type) {
@@ -215,6 +228,31 @@ export async function getCommands(options) {
         });
     }
 
+    // Remove it from this profile, or from every profile on a level such as all Child profiles
+    if (user && HIDEABLE_TYPES.includes(item.Type) && options.hideItem !== false) {
+        commands.push({
+            name: globalize.translate('RemoveFromProfile', user.Name),
+            id: 'hidefromme',
+            icon: 'visibility_off'
+        });
+
+        try {
+            const levels = await getProfileLevels(ServerConnections.getApiClient(item.ServerId));
+            // Administrators get every restricted level, everyone else the one they are on
+            const ownLevel = (user.Policy?.ProfileLevelId || '').replace(/-/g, '');
+            const offered = levels.filter(l => l.IsRestricted && (user.Policy?.IsAdministrator || l.Id.replace(/-/g, '') === ownLevel));
+            for (const level of offered) {
+                commands.push({
+                    name: globalize.translate('RemoveFromLevel', level.Name),
+                    id: 'hidefromlevel:' + level.Id,
+                    icon: 'visibility_off'
+                });
+            }
+        } catch (err) {
+            console.warn('[itemContextMenu] unable to load profile levels', err);
+        }
+    }
+
     if (commands.length) {
         commands.push({
             divider: true
@@ -385,11 +423,41 @@ function getResolveFunction(resolve, commandId, changed, deleted, itemId) {
     };
 }
 
+function hideFromProfile(apiClient, item, id, resolve, reject) {
+    const user = apiClient.getCurrentUserId();
+    const levelId = id.startsWith('hidefromlevel:') ? id.substring('hidefromlevel:'.length) : null;
+    const text = levelId ?
+        globalize.translate('RemoveFromLevelConfirm', item.Name) :
+        globalize.translate('RemoveFromProfileConfirm', item.Name);
+
+    confirm(text, globalize.translate('HeaderRemoveFromLibrary')).then(function () {
+        const request = levelId ? hideItemFromLevel(apiClient, item.Id, levelId) : hideItem(apiClient, user, item.Id);
+        return request.then(function () {
+            toast(globalize.translate('RemovedFromLibrary', item.Name));
+            // Take the card away when it's gone from this profile
+            return levelId ?
+                apiClient.getItem(user, item.Id).then(() => false, () => true) :
+                true;
+        }).then(function (goneForMe) {
+            resolve({ command: id, updated: true, deleted: goneForMe, itemId: item.Id });
+        });
+    }).catch(function () {
+        // confirm closed, or the server refused
+        reject();
+    });
+}
+
 function executeCommand(item, id, options) {
     const itemId = item.Id;
     const serverId = item.ServerId;
     const apiClient = ServerConnections.getApiClient(serverId);
     const api = ServerConnections.getApi(serverId);
+
+    if (id === 'hidefromme' || id.startsWith('hidefromlevel:')) {
+        return new Promise(function (resolve, reject) {
+            hideFromProfile(apiClient, item, id, resolve, reject);
+        });
+    }
 
     return new Promise(function (resolve, reject) {
         // eslint-disable-next-line sonarjs/max-switch-cases
