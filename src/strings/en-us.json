@@ -1155,7 +1155,7 @@
     "ListPaging": "{0}-{1} of {2}",
     "Live": "Live",
     "LiveBroadcasts": "Live broadcasts",
-    "LiveTV": "Live TV",
+    "LiveTV": "TV",
     "LiveTVPageLoadError": "Failed to load recordings page",
     "Localization": "Localization",
     "LogLevel.Trace": "Trace",

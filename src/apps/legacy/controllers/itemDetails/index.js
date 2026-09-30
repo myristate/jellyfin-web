@@ -5,6 +5,7 @@ import { getLibraryApi } from '@jellyfin/sdk/lib/utils/api/library-api';
 import { intervalToDuration } from 'date-fns';
 import DOMPurify from 'dompurify';
 import escapeHtml from 'escape-html';
+import { renderMediaBadges } from 'components/mediaBadges/mediaBadges';
 import markdownIt from 'markdown-it';
 import isEqual from 'lodash-es/isEqual';
 
@@ -134,6 +135,23 @@ function getProgramScheduleHtml(items, action = 'none') {
         moreButton: false,
         recordButton: false
     });
+}
+
+/** Show the media details of the chosen version and audio track by the play button (Finly). */
+function updateMediaBadges(page, item) {
+    const elem = page.querySelector('.itemMediaBadges');
+    const mediaSources = item?.MediaType === 'Video' ? item.MediaSources : null;
+    if (!elem) return;
+    if (!mediaSources?.length) {
+        renderMediaBadges(elem, null);
+        return;
+    }
+
+    const selectedId = page.querySelector('.selectSource')?.value;
+    const mediaSource = mediaSources.find(m => m.Id === selectedId) || mediaSources[0];
+    const audioValue = page.querySelector('.selectAudio')?.value;
+    const audioIndex = audioValue ? parseInt(audioValue, 10) : undefined;
+    renderMediaBadges(elem, mediaSource, Number.isNaN(audioIndex) ? undefined : audioIndex);
 }
 
 function getSelectedMediaSource(page, mediaSources) {
@@ -573,6 +591,7 @@ function reloadFromItem(instance, page, params, item, user) {
     renderName(item, page.querySelector('.nameContainer'), params.context);
     renderDetails(page, instance, item, apiClient, params.context);
     renderTrackSelections(page, instance, item);
+    updateMediaBadges(page, item);
 
     renderSeriesTimerEditor(page, item, apiClient, user);
     renderTimerEditor(page, item, apiClient, user);
@@ -2120,6 +2139,10 @@ export default function (view, params) {
             renderAudioSelections(view, self._currentPlaybackMediaSources);
             renderSubtitleSelections(view, self._currentPlaybackMediaSources);
             refreshSelectedVersion();
+            updateMediaBadges(view, currentItem);
+        });
+        view.querySelector('.selectAudio').addEventListener('change', function () {
+            updateMediaBadges(view, currentItem);
         });
         view.addEventListener('viewshow', function (e) {
             const page = this;

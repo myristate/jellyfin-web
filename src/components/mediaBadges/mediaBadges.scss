@@ -1,0 +1,16 @@
+.itemMediaBadges {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4em;
+    margin-bottom: 0.6em;
+
+    .mediaBadge {
+        margin: 0;
+    }
+}
+
+.mediaBadge-dolby {
+    border-color: #00a4dc;
+    color: #00a4dc;
+}
