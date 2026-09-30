@@ -7,6 +7,7 @@ import People from '@mui/icons-material/People';
 import PlayCircle from '@mui/icons-material/PlayCircle';
 import ReportProblem from '@mui/icons-material/ReportProblem';
 import Settings from '@mui/icons-material/Settings';
+import Chip from '@mui/material/Chip';
 import Collapse from '@mui/material/Collapse';
 import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
@@ -17,6 +18,7 @@ import ListSubheader from '@mui/material/ListSubheader';
 import React, { type MouseEvent, useCallback, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
+import { useOpenReportCount } from 'apps/dashboard/features/reports/api/useOpenReportCount';
 import ListItemLink from 'components/ListItemLink';
 import globalize from 'lib/globalize';
 
@@ -36,6 +38,7 @@ const PLAYBACK_PATHS = [
 
 const ServerDrawerSection = () => {
     const location = useLocation();
+    const { data: openReportCount } = useOpenReportCount();
 
     const [ isLibrarySectionOpen, setIsLibrarySectionOpen ] = useState(LIBRARY_PATHS.includes(location.pathname));
     const [ isPlaybackSectionOpen, setIsPlaybackSectionOpen ] = useState(PLAYBACK_PATHS.includes(location.pathname));
@@ -97,6 +100,14 @@ const ServerDrawerSection = () => {
                         <ReportProblem />
                     </ListItemIcon>
                     <ListItemText primary={globalize.translate('HeaderItemReports')} />
+                    {!!openReportCount && (
+                        <Chip
+                            size='small'
+                            color='warning'
+                            label={openReportCount}
+                            aria-label={globalize.translate('ItemReportsOpenCount', openReportCount)}
+                        />
+                    )}
                 </ListItemLink>
             </ListItem>
             <ListItem disablePadding>

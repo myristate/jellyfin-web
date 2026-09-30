@@ -21,6 +21,18 @@ export function canReport(item) {
     return REPORTABLE_TYPES.includes(item.Type) && item.LocationType !== 'Virtual';
 }
 
+/** The server limits how many reports a profile sends in an hour, and refuses a problem it doesn't know. */
+function getFailureKey(response) {
+    switch (response?.status) {
+        case 429:
+            return 'ReportTooMany';
+        case 400:
+            return 'ReportRejected';
+        default:
+            return 'ReportFailed';
+    }
+}
+
 function itemName(item) {
     if (item.Type === 'Episode' && item.SeriesName) {
         return `${item.SeriesName} S${item.ParentIndexNumber ?? 0}:E${item.IndexNumber ?? 0} ${item.Name}`;
@@ -55,9 +67,11 @@ export function showReportProblem(apiClient, item) {
     dlg.querySelector('.btnCancel').addEventListener('click', () => dialogHelper.close(dlg));
 
     let sent = false;
-    dlg.querySelector('form').addEventListener('submit', e => {
-        e.preventDefault();
-        e.stopPropagation();
+    let sending = false;
+    const btnSubmit = dlg.querySelector('.btnSubmit');
+    const sendReport = () => {
+        sending = true;
+        btnSubmit.disabled = true;
 
         loading.show();
         apiClient.ajax({
@@ -72,11 +86,21 @@ export function showReportProblem(apiClient, item) {
             sent = true;
             toast(globalize.translate('ReportSent'));
             dialogHelper.close(dlg);
-        }).catch(() => {
-            toast(globalize.translate('ReportFailed'));
+        }).catch(response => {
+            toast(globalize.translate(getFailureKey(response)));
         }).finally(() => {
+            sending = false;
+            btnSubmit.disabled = false;
             loading.hide();
         });
+    };
+
+    dlg.querySelector('form').addEventListener('submit', e => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Send one report, however often the button is pressed while it's sending
+        if (!sending) sendReport();
         return false;
     });
 
