@@ -41,7 +41,6 @@ import './components/themeMediaPlayer';
 import './scripts/autoThemes';
 import './scripts/mouseManager';
 import './scripts/screensavermanager';
-import './components/kidsView/kidsView';
 
 // Import site styles
 import './styles/site.scss';
@@ -92,6 +91,16 @@ build: ${__JF_BUILD_VERSION__}`);
     // Update localization on user changes
     Events.on(ServerConnections, 'localusersignedin', globalize.updateCurrentCulture);
     Events.on(ServerConnections, 'localusersignedout', globalize.updateCurrentCulture);
+    // The kids view is only for administrators, so it is loaded when one signs in rather than with the app (Finly)
+    Events.on(ServerConnections, 'localusersignedin', (_e, user) => {
+        if (user?.Policy?.IsAdministrator) {
+            import('./components/kidsView/kidsView')
+                .then(({ start }) => start())
+                .catch(err => {
+                    console.error('Failed to load the kids view', err);
+                });
+        }
+    });
     // Update sdk language on language changes
     Events.on(document, EventType.LANGUAGE_CHANGE, () => {
         ServerConnections.getCurrentApiClientAsync()

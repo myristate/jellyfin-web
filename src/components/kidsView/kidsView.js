@@ -27,6 +27,7 @@ const access = new Map();
 const pending = new Set();
 let fetchTimer = null;
 let observer = null;
+let started = null;
 
 const normalize = id => (id || '').replace(/-/g, '').toLowerCase();
 
@@ -286,7 +287,7 @@ async function recheck() {
     document.dispatchEvent(new CustomEvent(KIDS_VIEW_CHANGED));
 }
 
-async function start() {
+async function init() {
     loadTarget();
 
     document.addEventListener('viewshow', updateObserver);
@@ -312,4 +313,11 @@ async function start() {
     await recheck();
 }
 
-start().catch(err => console.warn('[kidsView] failed to start', err));
+/**
+ * Start the kids view. The app loads this module and calls it once an administrator signs in, keeping it out of the
+ * main bundle; calling it again does nothing.
+ */
+export function start() {
+    started ??= init().catch(err => console.warn('[kidsView] failed to start', err));
+    return started;
+}
