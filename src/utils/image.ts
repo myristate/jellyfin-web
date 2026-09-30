@@ -57,6 +57,8 @@ export function getDeviceIcon(info: DeviceInfoDto | SessionInfoDto) {
         case 'Jellyfin Android TV':
         case 'Jellyfin for Android':
         case 'Jellyfin for Android TV':
+        case 'Finly for Android TV':
+        case 'Finly for Android TV (debug)':
             return BASE_DEVICE_IMAGE_URL + 'android.svg';
         case 'Jellyfin Mobile (iOS)':
         case 'Jellyfin Mobile (iPadOS)':
