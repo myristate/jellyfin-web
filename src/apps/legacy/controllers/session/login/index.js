@@ -365,7 +365,10 @@ export default function (view, params) {
 
         apiClient.getPublicUsers().then(function (users) {
             if (users.length) {
-                showVisualForm();
+                // The list can arrive after a profile was already picked, don't close its PIN pad
+                if (view.querySelector('.pinLoginForm').classList.contains('hide')) {
+                    showVisualForm();
+                }
                 loadUserList(view, apiClient, users);
             } else {
                 view.querySelector('#txtManualName').value = '';
