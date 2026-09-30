@@ -8,6 +8,7 @@ import Logout from '@mui/icons-material/Logout';
 import PhonelinkLock from '@mui/icons-material/PhonelinkLock';
 import Settings from '@mui/icons-material/Settings';
 import Storage from '@mui/icons-material/Storage';
+import SwitchAccount from '@mui/icons-material/SwitchAccount';
 import Divider from '@mui/material/Divider';
 import ListItemIcon from '@mui/material/ListItemIcon';
 import ListItemText from '@mui/material/ListItemText';
@@ -58,6 +59,12 @@ const AppUserMenu: FC<AppUserMenuProps> = ({
         onMenuClose();
     }, [ onMenuClose ]);
 
+    // Signing out goes back to the profile picker
+    const onSwitchProfileClick = useCallback(() => {
+        Dashboard.logout();
+        onMenuClose();
+    }, [ onMenuClose ]);
+
     const onSelectServerClick = useCallback(() => {
         Dashboard.selectServer();
         onMenuClose();
@@ -79,6 +86,18 @@ const AppUserMenu: FC<AppUserMenuProps> = ({
             open={open}
             onClose={onMenuClose}
         >
+            <MenuItem
+                className='btnSwitchProfile'
+                onClick={onSwitchProfileClick}
+            >
+                <ListItemIcon>
+                    <SwitchAccount />
+                </ListItemIcon>
+                <ListItemText>
+                    {globalize.translate('SwitchProfile')}
+                </ListItemText>
+            </MenuItem>
+            <Divider />
             <MenuItem
                 component={Link}
                 to={`/userprofile?userId=${user?.Id}`}
