@@ -243,6 +243,8 @@
 }
 
 .programGrid {
+    /* (Finly) Holds the current time line */
+    position: relative;
     padding-bottom: 4px;
     flex-grow: 1;
 }
@@ -308,6 +310,54 @@
     font-size: 0.86em;
     opacity: 0.75;
     overflow: hidden;
+}
+
+/* (Finly) Finished programmes fade back, what's on now gets an accent edge */
+.programCell-past {
+    opacity: 0.45;
+}
+
+.programCell-active {
+    box-shadow: inset 0.25em 0 0 var(--jf-palette-primary-main, #00a4dc);
+}
+
+.guide-followLive .programCell-past {
+    visibility: hidden;
+}
+
+.guideNowLine {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--jf-palette-primary-main, #00a4dc);
+    z-index: 2;
+    pointer-events: none;
+}
+
+.guideNowMarker {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    padding: 0 0.4em;
+    border-left: 2px solid var(--jf-palette-primary-main, #00a4dc);
+    margin-left: -1px;
+    color: var(--jf-palette-primary-main, #00a4dc);
+    font-weight: 600;
+    background: inherit;
+    pointer-events: none;
+}
+
+.btnGuideFollowLive {
+    margin: 0;
+    flex-shrink: 0;
+}
+
+.btnGuideFollowLive.guideFollowLive-on {
+    color: var(--jf-palette-primary-main, #00a4dc);
 }
 
 .guideProgramTime {

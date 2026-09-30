@@ -147,6 +147,10 @@ function Guide(options) {
     let currentStartIndex = 0;
     let currentChannelLimit = 0;
     let autoRefreshInterval;
+    // (Finly) Keeps "on now", finished programmes and the current time line up to date
+    let nowInterval;
+    let gridStartMs = null;
+    let followLive = userSettings.get('guide-followlive') === 'true';
     let programCells;
     let lastFocusDirection;
 
@@ -191,12 +195,106 @@ function Guide(options) {
         autoRefreshInterval = setInterval(function () {
             self.refresh();
         }, intervalMs);
+
+        nowInterval = setInterval(function () {
+            updateNow(options.element);
+        }, 30000);
     }
 
     function stopAutoRefresh() {
         if (autoRefreshInterval) {
             clearInterval(autoRefreshInterval);
             autoRefreshInterval = null;
+        }
+
+        if (nowInterval) {
+            clearInterval(nowInterval);
+            nowInterval = null;
+        }
+    }
+
+    /**
+     * (Finly) Shades what's on now and what has finished, moves the current time line, and when following live TV
+     * keeps the left edge of the guide at the current time. Runs after every render and every 30 seconds.
+     */
+    function updateNow(context) {
+        if (gridStartMs == null) {
+            return;
+        }
+
+        const now = Date.now();
+        for (const cell of programGrid.querySelectorAll('.programCell[data-startdate]')) {
+            const start = Date.parse(cell.getAttribute('data-startdate'));
+            const end = Date.parse(cell.getAttribute('data-enddate'));
+            cell.classList.toggle('programCell-active', now >= start && now < end);
+            cell.classList.toggle('programCell-past', end <= now);
+        }
+
+        const pct = (now - gridStartMs) / msPerDay;
+        const showingToday = pct >= 0 && pct < 1;
+        const live = followLive && showingToday;
+        context.classList.toggle('guide-followLive', live);
+
+        let line = programGrid.querySelector('.guideNowLine');
+        let marker = context.querySelector('.guideNowMarker');
+        if (!showingToday) {
+            line?.remove();
+            marker?.remove();
+            return;
+        }
+
+        const row = programGrid.querySelector('.channelPrograms');
+        const rowWidth = row ? row.offsetWidth : programGrid.scrollWidth;
+        if (!line) {
+            line = document.createElement('div');
+            line.className = 'guideNowLine';
+            programGrid.appendChild(line);
+        }
+        line.style.left = Math.round(pct * rowWidth) + 'px';
+
+        const headersInner = context.querySelector('.timeslotHeadersInner');
+        if (headersInner) {
+            if (!marker) {
+                marker = document.createElement('div');
+                marker.className = 'guideNowMarker';
+                marker.textContent = globalize.translate('GuideNow');
+                headersInner.appendChild(marker);
+            }
+            marker.style.left = (pct * 100) + '%';
+        }
+
+        if (live) {
+            keepToNow(pct);
+        }
+    }
+
+    /** (Finly) When following live TV, don't let the guide scroll back before the current time. */
+    function keepToNow(pct) {
+        const pct2 = pct ?? (gridStartMs == null ? null : (Date.now() - gridStartMs) / msPerDay);
+        if (pct2 == null || pct2 < 0 || pct2 >= 1) {
+            return;
+        }
+
+        const minScroll = Math.round(pct2 * programGrid.scrollWidth);
+        if (programGrid.scrollLeft < minScroll - 1) {
+            nativeScrollTo(programGrid, minScroll, true);
+        }
+    }
+
+    function setFollowLive(context, enabled) {
+        followLive = enabled;
+        userSettings.set('guide-followlive', enabled ? 'true' : 'false');
+        const button = context.querySelector('.btnGuideFollowLive');
+        button?.classList.toggle('guideFollowLive-on', enabled);
+        button?.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+        updateNow(context);
+        if (!enabled) {
+            // Back to the usual view: the current half hour at the left
+            const now = new Date();
+            let scrollToTimeMs = now.getHours() * 60 * 60 * 1000;
+            if (now.getMinutes() >= 30) scrollToTimeMs += 30 * 60 * 1000;
+            const start = new Date(gridStartMs);
+            scrollProgramGridToTimeMs(context, scrollToTimeMs, (start.getHours() * 60 + start.getMinutes()) * 60 * 1000);
         }
     }
 
@@ -695,6 +793,7 @@ function Guide(options) {
 
         const startDate = date;
         const endDate = new Date(startDate.getTime() + msPerDay);
+        gridStartMs = startDate.getTime();
         context.querySelector('.timeslotHeaders').innerHTML = getTimeslotHeadersHtml(startDate, endDate);
         items = {};
         renderPrograms(context, date, channels, programs, renderOptions);
@@ -704,6 +803,7 @@ function Guide(options) {
         }
 
         scrollProgramGridToTimeMs(context, guideOptions.scrollToTimeMs, guideOptions.startTimeOfDayMs);
+        updateNow(context);
     }
 
     function scrollProgramGridToTimeMs(context, scrollToTimeMs, startTimeOfDayMs) {
@@ -790,6 +890,10 @@ function Guide(options) {
         }
 
         updateProgramCellsOnScroll(elem, programCells);
+
+        if (followLive && context.classList.contains('guide-followLive')) {
+            keepToNow();
+        }
     }
 
     function onTimeslotHeadersScroll(context, elem) {
@@ -1145,6 +1249,13 @@ function Guide(options) {
         currentStartIndex = Math.max(currentStartIndex - currentChannelLimit, 0);
         reloadPage(guideContext);
         restartAutoRefresh();
+    });
+
+    const btnFollowLive = guideContext.querySelector('.btnGuideFollowLive');
+    btnFollowLive.classList.toggle('guideFollowLive-on', followLive);
+    btnFollowLive.setAttribute('aria-pressed', followLive ? 'true' : 'false');
+    btnFollowLive.addEventListener('click', function () {
+        setFollowLive(guideContext, !followLive);
     });
 
     guideContext.querySelector('.btnGuideViewSettings').addEventListener('click', function () {
