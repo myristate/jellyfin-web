@@ -33,6 +33,7 @@ import { ServerConnections } from 'lib/jellyfin-apiclient';
 import LibraryMenu from 'scripts/libraryMenu';
 import { setBackdropTransparency, TRANSPARENCY_LEVEL } from 'components/backdrop/backdrop';
 import { pluginManager } from 'components/pluginManager';
+import { getChannelSignal, getSignalReadoutText, getWeakSignalText } from 'scripts/channelSignal';
 
 function getOpenedDialog() {
     return document.querySelector('.dialogContainer .dialog.opened');
@@ -189,6 +190,7 @@ export default function (view) {
         const item = state.NowPlayingItem;
 
         currentItem = item;
+        updateSignalPolling(item, state);
         if (!item) {
             updateRecordingButton(null);
             LibraryMenu.setTitle('');
@@ -232,6 +234,86 @@ export default function (view) {
             view.querySelector('.btnPreviousChapter').classList.add('hide');
             view.querySelector('.btnNextChapter').classList.add('hide');
         }
+    }
+
+    /** (Finly) The live TV channel being watched, or null for anything else (recordings, films, ...). */
+    function getLiveChannelId(item, state) {
+        if (!item) {
+            return null;
+        }
+
+        if (item.Type === 'TvChannel') {
+            return item.Id;
+        }
+
+        if (item.ChannelId && state?.MediaSource?.IsInfiniteStream) {
+            return item.ChannelId;
+        }
+
+        return null;
+    }
+
+    /** (Finly) Starts, keeps or stops polling the tuner signal to match what's playing. */
+    function updateSignalPolling(item, state) {
+        const channelId = getLiveChannelId(item, state);
+        if (channelId === signalChannelId) {
+            return;
+        }
+
+        stopSignalPolling();
+        if (!channelId) {
+            return;
+        }
+
+        signalChannelId = channelId;
+        const apiClient = ServerConnections.getApiClient(item.ServerId);
+        pollSignal(apiClient, channelId);
+        signalInterval = setInterval(function () {
+            pollSignal(apiClient, channelId);
+        }, 10000);
+    }
+
+    function stopSignalPolling() {
+        if (signalInterval) {
+            clearInterval(signalInterval);
+            signalInterval = null;
+        }
+
+        signalChannelId = null;
+        renderSignal(null);
+    }
+
+    function pollSignal(apiClient, channelId) {
+        getChannelSignal(apiClient, channelId).then(function (signal) {
+            // Ignore answers that arrive after the channel changed or playback stopped
+            if (channelId === signalChannelId) {
+                renderSignal(signal);
+            }
+        });
+    }
+
+    function renderSignal(signal) {
+        const elem = view.querySelector('.osdSignalInfo');
+        if (!elem) {
+            return;
+        }
+
+        if (!signal) {
+            elem.classList.add('hide');
+            elem.innerHTML = '';
+            return;
+        }
+
+        let html = escapeHtml(getSignalReadoutText(signal));
+        if (signal.IsWeak) {
+            html += ' · <span class="osdSignalWeak">' + escapeHtml(globalize.translate('SignalWeak')) + '</span>';
+            elem.title = getWeakSignalText(signal);
+        } else {
+            elem.removeAttribute('title');
+        }
+
+        elem.innerHTML = html;
+        elem.classList.remove('hide');
     }
 
     function setTitle(item, parentName) {
@@ -553,6 +635,7 @@ export default function (view) {
 
     function onPlaybackStopped(e, state) {
         currentRuntimeTicks = null;
+        stopSignalPolling();
         resetUpNextDialog();
         console.debug('nowplaying event: ' + e.type);
 
@@ -607,6 +690,7 @@ export default function (view) {
     }
 
     function releaseCurrentPlayer() {
+        stopSignalPolling();
         destroyStats();
         destroySubtitleSync();
         resetUpNextDialog();
@@ -1638,6 +1722,9 @@ export default function (view) {
     let playbackStartTimeTicks = 0;
     let subtitleSyncOverlay;
     let trickplayResolution = null;
+    // (Finly) Live TV tuner signal polling
+    let signalChannelId = null;
+    let signalInterval = null;
     const nowPlayingVolumeSlider = view.querySelector('.osdVolumeSlider');
     const nowPlayingVolumeSliderContainer = view.querySelector('.osdVolumeSliderContainer');
     const nowPlayingPositionSlider = view.querySelector('.osdPositionSlider');
@@ -1787,6 +1874,7 @@ export default function (view) {
             recordingButtonManager = null;
         }
 
+        stopSignalPolling();
         destroyStats();
         destroySubtitleSync();
     });
