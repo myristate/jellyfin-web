@@ -5,6 +5,7 @@ import loading from 'components/loading/loading';
 import * as userSettings from 'scripts/settings/userSettings';
 import Events from 'utils/events';
 import { setFilterStatus } from 'components/filterdialog/filterIndicator';
+import { findChannelSignal, getChannelSignals, getWeakSignalIconHtml } from 'scripts/channelSignal';
 
 import 'elements/emby-itemscontainer/emby-itemscontainer';
 
@@ -40,6 +41,19 @@ export default function (view, params, tabContent) {
             showDetailsMenu: true,
             showCurrentProgram: true,
             showCurrentProgramTime: true
+        });
+    }
+
+    /** (Finly) Adds a small warning icon to the title of channels with a weak tuner signal. */
+    function showWeakSignals(elem) {
+        getChannelSignals(ApiClient).then(function (signals) {
+            for (const card of elem.querySelectorAll('.card[data-id]')) {
+                const signal = findChannelSignal(signals, card.getAttribute('data-id'));
+                const title = card.querySelector('.cardText-first');
+                if (signal?.IsWeak && title && !title.querySelector('.channelSignalWeak')) {
+                    title.insertAdjacentHTML('afterbegin', getWeakSignalIconHtml(signal, 'cardSignalWeak'));
+                }
+            }
         });
     }
 
@@ -87,6 +101,7 @@ export default function (view, params, tabContent) {
         const elem = context.querySelector('#items');
         elem.innerHTML = html;
         imageLoader.lazyChildren(elem);
+        showWeakSignals(elem);
         let i;
         let length;
         let elems;

@@ -1,0 +1,11 @@
+/* (Finly) Weak tuner signal warning, shown on guide channel headers and channel cards */
+.channelSignalWeak {
+    color: var(--jf-palette-warning-main, #ffa726);
+    font-size: 1em;
+    line-height: 1;
+}
+
+.cardSignalWeak {
+    vertical-align: text-bottom;
+    margin-inline-end: 0.25em;
+}

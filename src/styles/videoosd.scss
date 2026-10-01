@@ -173,6 +173,19 @@
     padding-left: 0.6em !important;
 }
 
+/* (Finly) Tuner signal readout while watching live TV */
+.osdSignalInfo {
+    padding-left: 0.6em !important;
+    margin-top: -0.4em;
+    font-size: 0.85em;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.osdSignalWeak {
+    color: var(--jf-palette-warning-main, #ffa726);
+    font-weight: 600;
+}
+
 .osdTextContainer {
     display: flex;
     align-items: center;

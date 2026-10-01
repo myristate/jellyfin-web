@@ -18,6 +18,7 @@ import imageLoader from '../images/imageLoader';
 import layoutManager from '../layoutManager';
 import itemShortcuts from '../shortcuts';
 import dom from '../../utils/dom';
+import { findChannelSignal, getChannelSignals, getWeakSignalIconHtml, getWeakSignalText } from '../../scripts/channelSignal';
 
 import './guide.scss';
 import './programs.scss';
@@ -153,9 +154,12 @@ function Guide(options) {
     let followLive = userSettings.get('guide-followlive') === 'true';
     let programCells;
     let lastFocusDirection;
+    // (Finly) Tuner signal readings, fetched once per guide load and on each auto refresh
+    let channelSignals = null;
 
     self.refresh = function () {
         currentDate = null;
+        loadChannelSignals(options.element);
         reloadPage(options.element);
         restartAutoRefresh();
     };
@@ -295,6 +299,33 @@ function Guide(options) {
             if (now.getMinutes() >= 30) scrollToTimeMs += 30 * 60 * 1000;
             const start = new Date(gridStartMs);
             scrollProgramGridToTimeMs(context, scrollToTimeMs, (start.getHours() * 60 + start.getMinutes()) * 60 * 1000);
+        }
+    }
+
+    function loadChannelSignals(context) {
+        const apiClient = ServerConnections.getApiClient(options.serverId);
+        getChannelSignals(apiClient).then(function (signals) {
+            channelSignals = signals;
+            applyChannelSignals(context);
+        });
+    }
+
+    /**
+     * (Finly) Marks channels with a weak tuner signal with a small warning icon. Channels that are fine, or that
+     * have no reading yet, show nothing.
+     */
+    function applyChannelSignals(context) {
+        for (const cell of context.querySelectorAll('.guide-channelHeaderCell[data-id]')) {
+            cell.querySelector('.guideChannelSignal')?.remove();
+
+            const baseTitle = cell.getAttribute('data-basetitle') || '';
+            const signal = findChannelSignal(channelSignals, cell.getAttribute('data-id'));
+            if (signal?.IsWeak) {
+                cell.insertAdjacentHTML('beforeend', getWeakSignalIconHtml(signal, 'guideChannelSignal'));
+                cell.title = baseTitle + ' - ' + getWeakSignalText(signal);
+            } else {
+                cell.title = baseTitle;
+            }
         }
     }
 
@@ -713,7 +744,7 @@ function Guide(options) {
                 title.push(channel.Name);
             }
 
-            html += `<button title="${escapeHtml(title.join(' '))}" type="button" class="${cssClass}" data-action="${ItemAction.Link}" data-isfolder="${channel.IsFolder}" data-id="${channel.Id}" data-serverid="${channel.ServerId}" data-type="${channel.Type}">`;
+            html += `<button title="${escapeHtml(title.join(' '))}" data-basetitle="${escapeHtml(title.join(' '))}" type="button" class="${cssClass}" data-action="${ItemAction.Link}" data-isfolder="${channel.IsFolder}" data-id="${channel.Id}" data-serverid="${channel.ServerId}" data-type="${channel.Type}">`;
 
             if (hasChannelImage) {
                 const url = apiClient.getScaledImageUrl(channel.Id, {
@@ -739,6 +770,7 @@ function Guide(options) {
         const channelList = context.querySelector('.channelsContainer');
         channelList.innerHTML = html;
         imageLoader.lazyChildren(channelList);
+        applyChannelSignals(context);
     }
 
     function renderPrograms(context, date, channels, programs, programOptions) {

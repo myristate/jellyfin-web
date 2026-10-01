@@ -431,6 +431,14 @@
     }
 }
 
+/* (Finly) Weak signal warning, tucked into the bottom corner clear of the logo */
+.guideChannelSignal {
+    position: absolute;
+    bottom: 0.2em;
+    left: 0.25em;
+    font-size: 0.95em;
+}
+
 .guideChannelImage {
     position: absolute;
     right: 8%;
